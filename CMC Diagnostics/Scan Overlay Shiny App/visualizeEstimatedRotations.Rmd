@@ -75,11 +75,66 @@ comparisonData <- purrr::map_dfr(seq(-30,30,by = 3),
 
 Launch shiny app. May take a sec to load since the polar domain estimated rotation is calculated first.
 
+(To-do: remove excess white space around plots to avoid overlapping. Alternatively, move difference plot to a different part of the page.)
+
 ```{r}
 estimatedRotationApp(reference = P0010_processed,
                      target = P0011_processed,
                      reference_v_target_comparison = comparisonData)
 ```
+
+```{r}
+alignedScans <- alignScans(P0010_processed,P0011_processed,differences = "do nothing")
+
+
+pltDat <- bind_rows(alignedScans[[1]] %>%
+                      x3pToDF() %>%
+                      mutate(x3pName = "P0010"),
+                    alignedScans[[2]] %>%
+                      x3pToDF() %>%
+                      mutate(x3pName = "P0011"))  %>%
+  pivot_wider(id_cols = c(x,y,x3pName),names_from = x3pName,values_from = value)  %>%
+  mutate(difference = P0010 - P0011)
+  # mutate(difference = purrr::map2(P0010,P0011,
+  #                                 ~ sum(.x,-1*.y,
+  #                                       na.rm = TRUE)) %>% 
+  #          unlist())
+
+pltDat %>%
+  ggplot(aes(x = x,y = y,fill = difference)) +
+  geom_raster() +
+  ggplot2::scale_fill_gradientn(colours = rev(c('#7f3b08','#b35806','#e08214','#fdb863','#fee0b6','#f7f7f7',
+                                                '#d8daeb','#b2abd2','#8073ac','#542788','#2d004b')),
+                                values = scales::rescale(quantile(pltDat$difference,
+                                                                  c(0,.01,.025,.1,.25,.5,.75,0.9,.975,.99,1),
+                                                                  na.rm = TRUE)),
+                                breaks = function(lims){
+                                  dat <- quantile(as.vector(pltDat$difference),
+                                                  c(0,.01,.5,.99,1),
+                                                  # c(0,.01,.025,.1,.25,.5,.75,0.9,.975,.99,1),
+                                                  na.rm = TRUE)
+                                  
+                                  dat <- dat %>%
+                                    setNames(paste0(names(dat)," [",round(dat*1e6,1),"]"))
+                                  
+                                  return(dat)
+                                },
+                                na.value = "transparent",
+                                guide = ggplot2::guide_colorbar(title = expression("Rel. Height ["*mu*"m]"),
+                                                                barheight = 10,
+                                                                order = 1,
+                                                                label.theme = ggplot2::element_text(size = 8),
+                                                                title.theme = ggplot2::element_text(size = 10))) +
+  ggplot2::coord_fixed(expand = FALSE) +
+  ggplot2::theme_minimal() +
+  ggplot2::scale_y_reverse() +
+  ggplot2::theme(axis.ticks.x = ggplot2::element_blank(),
+                 axis.ticks.y = ggplot2::element_blank(),
+                 panel.grid.major = ggplot2::element_blank(),
+                 panel.grid.minor = ggplot2::element_blank(),
+                 panel.background = ggplot2::element_blank())
+```
+
 
 Try again with a P0011 scans with a new mask including more of the breech face near the firing pin "tongue mark". This doesn't seem to affect the Original Method or High CMC Method estimated rotation, but slightly changes the polar domain estimated rotation
 

@@ -833,13 +833,13 @@ decision_convergence <- function(cellIndex,
     return()
 }
 
-x3pToDF <- function(x3p){
+x3pToDF <- function(x3p,scale_xy = FALSE){
 
   ret <- expand.grid("y" = 1:nrow(x3p$surface.matrix),
                      "x" = 1:ncol(x3p$surface.matrix)) %>%
     mutate(value = as.vector(x3p$surface.matrix),
-           x = x*x3p$header.info$incrementX*1e6,
-           y = y*x3p$header.info$incrementY*1e6)
+           x = x*ifelse(scale_xy,x3p$header.info$incrementX*1e6,1),
+           y = y*ifelse(scale_xy,x3p$header.info$incrementX*1e6,1))
 
   return(ret)
 }
@@ -872,7 +872,8 @@ estimatedRotationApp <- function(reference,
                      numericInput("corrThresh","Correlation Threshold",value = .5,min = 0,max = 1),
                      numericInput("translationThresh","Translation Threshold",value = 20,min = 0)),
         mainPanel(width = 10,
-                  fluidRow(plotOutput("overlayPlot")),
+                  fluidRow(column(6,plotOutput("overlayPlot")),
+                           column(6,plotOutput("differencePlot"))),
                   br(),
                   br(),
                   br(),
@@ -896,7 +897,7 @@ estimatedRotationApp <- function(reference,
       if(!is.null(reference_v_target_comparison)){
 
         updateRadioButtons(inputId = "rotationEstimation",
-                           choices = c("None (show scans as-is)" = 1,
+                           choices = c("Nothing (show scans as-is)" = 1,
                                        "Polar Transformation" = 2,
                                        "Original Method" = 3,
                                        "High CMC Method" = 4))
@@ -932,7 +933,17 @@ estimatedRotationApp <- function(reference,
 
       targetRotated <- target
 
+      difference <- bind_rows(reference %>%
+                                x3pToDF() %>%
+                                mutate(x3pName = "reference"),
+                              targetRotated %>%
+                                x3pToDF() %>%
+                                mutate(x3pName = "target"))  %>%
+        pivot_wider(id_cols = c(x,y,x3pName),names_from = x3pName,values_from = value)  %>%
+        mutate("Overlap.Difference" = reference - target)
+
       makeReactiveBinding("targetRotated")
+      makeReactiveBinding("difference")
 
       observeEvent(input$rotationEstimation,
                    {
@@ -962,6 +973,16 @@ estimatedRotationApp <- function(reference,
                        target_rotated$surface.matrix <- (target_rotated$surface.matrix - 1)/1e5
 
                        targetRotated <<- target_rotated
+
+                       #update difference scan (in the form of a data frame) too
+                       difference <<- bind_rows(reference %>%
+                                                x3pToDF() %>%
+                                                mutate(x3pName = "reference"),
+                                              targetRotated %>%
+                                                x3pToDF() %>%
+                                                mutate(x3pName = "target"))  %>%
+                         pivot_wider(id_cols = c(x,y,x3pName),names_from = x3pName,values_from = value)  %>%
+                         mutate("Overlap.Difference" = reference - target)
 
                      }
 
@@ -1172,6 +1193,52 @@ estimatedRotationApp <- function(reference,
 
         })
 
+
+        output$differencePlot <- renderPlot({
+          # browser()
+
+          pltDat <- difference %>%
+            filter(!is.na(Overlap.Difference)) %>%
+            mutate(x3pName = "Overlap Reference minus Target")
+
+          plt <- pltDat %>%
+            ggplot2::ggplot() +
+            ggplot2::geom_raster(ggplot2::aes(x = x,y = y,fill = Overlap.Difference)) +
+            ggplot2::scale_fill_gradientn(colours = c("#67a9cf","#86b7d6","#a2c5dd","#bdd3e3","#d7e2ea",
+                                                          "#f1f1f1","#f5dcd3","#f6c8b6","#f6b399","#f39f7d","#ef8a62"),
+                                          values = scales::rescale(quantile(pltDat$Overlap.Difference,
+                                                                            c(0,.01,.025,.1,.25,.5,.75,0.9,.975,.99,1),
+                                                                            na.rm = TRUE)),
+                                          breaks = function(lims){
+                                            dat <- quantile(as.vector(pltDat$Overlap.Difference),
+                                                            c(0,.01,.5,.99,1),
+                                                            # c(0,.01,.025,.1,.25,.5,.75,0.9,.975,.99,1),
+                                                            na.rm = TRUE)
+
+                                            dat <- dat %>%
+                                              setNames(paste0(names(dat)," [",round(dat*1e6,1),"]"))
+
+                                            return(dat)
+                                          },
+                                          na.value = "transparent",
+                                          guide = ggplot2::guide_colorbar(title = expression("Rel. Height ["*mu*"m]"),
+                                                                          barheight = 10,
+                                                                          order = 1,
+                                                                          label.theme = ggplot2::element_text(size = 8),
+                                                                          title.theme = ggplot2::element_text(size = 10))) +
+            facet_wrap(~ x3pName,nrow = 1) +
+            ggplot2::coord_fixed(expand = FALSE) +
+            ggplot2::theme_minimal() +
+            ggplot2::scale_y_reverse() +
+            ggplot2::theme(axis.ticks.x = ggplot2::element_blank(),
+                           axis.ticks.y = ggplot2::element_blank(),
+                           panel.grid.major = ggplot2::element_blank(),
+                           panel.grid.minor = ggplot2::element_blank(),
+                           panel.background = ggplot2::element_blank())
+
+          plt
+
+        })
       })
 
       observe({
