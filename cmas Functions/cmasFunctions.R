@@ -845,17 +845,24 @@ x3pToDF <- function(x3p){
 }
 
 estimatedRotationApp <- function(reference,
-                                  target,
-                                  reference_v_target_comparison = NULL) {
+                                 target,
+                                 reference_v_target_comparison = NULL) {
 
   polarRotation <- polarEstimateRotation(reference = reference,target = target)
+
+  scansTranslationallyAligned <- alignScans(reference = reference,
+                                            target = target,
+                                            differences = "do nothing")
+
+  reference <- scansTranslationallyAligned[[1]]
+  target <- scansTranslationallyAligned[[2]]
 
   require(shiny)
   app <- shinyApp(
     ui = fluidPage(
       sidebarLayout(
         sidebarPanel(width = 2,
-                     numericInput("referenceAlpha", "Reference Alpha Level", min = 0, max = 1, value = 1),
+                     numericInput("referenceAlpha", "Reference Alpha Level", min = 0, max = 1, value = .7),
                      numericInput("targetAlpha", "Target Alpha Level", min = 0, max = 1, value = .7),
                      checkboxInput("overlayCheck","Overlay Scans",value = TRUE),
                      numericInput("plotWidth",label = "Plot Width (px)",min = 1,value = 1000),
@@ -962,6 +969,8 @@ estimatedRotationApp <- function(reference,
 
                    })
 
+
+
       observe({
 
         output$overlayPlot <- renderPlot(width = plotWidth(),height = plotWidth()/2,{
@@ -1041,8 +1050,8 @@ estimatedRotationApp <- function(reference,
             }
             else{
 
-              updateNumericInput(inputId = "referenceAlpha",value = .7)
-              updateNumericInput(inputId = "targetAlpha",value = 1)
+              # updateNumericInput(inputId = "referenceAlpha",value = input$targetAlpha)
+              # updateNumericInput(inputId = "targetAlpha",value = input$targetAlpha)
 
               plt <- ggplot2::ggplot() +
                 geom_raster(data =

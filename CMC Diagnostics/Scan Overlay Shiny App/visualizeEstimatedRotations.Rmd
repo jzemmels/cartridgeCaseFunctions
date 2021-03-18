@@ -77,8 +77,8 @@ Launch shiny app. May take a sec to load since the polar domain estimated rotati
 
 ```{r}
 estimatedRotationApp(reference = P0010_processed,
-                      target = P0011_processed,
-                      reference_v_target_comparison = comparisonData)
+                     target = P0011_processed,
+                     reference_v_target_comparison = comparisonData)
 ```
 
 Try again with a P0011 scans with a new mask including more of the breech face near the firing pin "tongue mark". This doesn't seem to affect the Original Method or High CMC Method estimated rotation, but slightly changes the polar domain estimated rotation
@@ -103,14 +103,14 @@ P0011_processed_new <- P0011 %>%
 P0011_processed_new$mask <- NULL
 
 comparisonData2 <- purrr::map_dfr(seq(-30,30,by = 3),
-                                 ~ comparison_allTogether(reference = P0010_processed,
-                                                          target = P0011_processed,
-                                                          theta = .,
-                                                          numCells = 64,
-                                                          maxMissingProp = .85))
+                                  ~ comparison_allTogether(reference = P0010_processed,
+                                                           target = P0011_processed,
+                                                           theta = .,
+                                                           numCells = 64,
+                                                           maxMissingProp = .85))
 
 estimatedRotationApp(reference = P0010_processed,
-                      target = P0011_processed_new,
-                      reference_v_target_comparison = comparisonData2)
+                     target = P0011_processed_new,
+                     reference_v_target_comparison = comparisonData2)
 ```
 
