@@ -1,0 +1,116 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r,setup}
+library(x3ptools)
+library(tidyverse)
+library(cmcR)
+
+source("../../cmas Functions/cmasFunctions.R") #new helper functions
+```
+
+```{r}
+P0010 <- read_x3p(file = "P0010_mask.x3p")
+
+P0011 <- read_x3p(file = "P0011_mask.x3p")
+```
+
+```{r}
+x3pListPlot(list("P0010" = P0010 %>% sample_x3p(m = 4),
+                 "P0011" = P0011 %>% sample_x3p(m = 4)))
+```
+
+
+Preprocess Scans
+
+```{r}
+P0010_processed <- P0010 %>%
+  x3p_delete(mask_vals = "#CD7F32FF") %>%
+  preProcess_removeTrend(statistic = "quantile",
+                         tau = .5,
+                         method = "fn") %>%
+  preProcess_gaussFilter() %>% 
+  x3p_sample() %>%
+  preProcess_removeTrend(statistic = "quantile",
+                         tau = .5,
+                         method = "fn") %>%
+  preProcess_gaussFilter() %>% 
+  x3p_sample() %>%
+  cmcR:::preProcess_cropWS()
+
+P0010_processed$mask <- NULL
+
+P0011_processed <- P0011 %>%
+  x3p_delete(mask_vals = "#CD7F32FF") %>%
+  preProcess_removeTrend(statistic = "quantile",
+                         tau = .5,
+                         method = "fn") %>%
+  preProcess_gaussFilter() %>% 
+  x3p_sample() %>% 
+  preProcess_removeTrend(statistic = "quantile",
+                         tau = .5,
+                         method = "fn") %>%
+  preProcess_gaussFilter() %>% 
+  x3p_sample() %>%
+  cmcR:::preProcess_cropWS()
+
+P0011_processed$mask <- NULL
+
+x3pListPlot(list("P0010 Processed" = P0010_processed,
+                 "P0011 Processed" = P0011_processed))
+```
+
+Calculate similarity features between the two scans
+```{r}
+comparisonData <- purrr::map_dfr(seq(-30,30,by = 3),
+                                 ~ comparison_allTogether(reference = P0010_processed,
+                                                          target = P0011_processed,
+                                                          theta = .,
+                                                          numCells = 64,
+                                                          maxMissingProp = .85))
+```
+
+
+Launch shiny app. May take a sec to load since the polar domain estimated rotation is calculated first.
+
+```{r}
+estimatedRotationApp(reference = P0010_processed,
+                      target = P0011_processed,
+                      reference_v_target_comparison = comparisonData)
+```
+
+Try again with a P0011 scans with a new mask including more of the breech face near the firing pin "tongue mark". This doesn't seem to affect the Original Method or High CMC Method estimated rotation, but slightly changes the polar domain estimated rotation
+
+```{r}
+P0011 <- read_x3p(file = "P0011_mask_new.x3p")
+
+P0011_processed_new <- P0011 %>%
+  x3p_delete(mask_vals = "#CD7F32FF") %>%
+  preProcess_removeTrend(statistic = "quantile",
+                         tau = .5,
+                         method = "fn") %>%
+  preProcess_gaussFilter() %>% 
+  x3p_sample() %>% 
+  preProcess_removeTrend(statistic = "quantile",
+                         tau = .5,
+                         method = "fn") %>%
+  preProcess_gaussFilter() %>% 
+  x3p_sample() %>%
+  cmcR:::preProcess_cropWS()
+
+P0011_processed_new$mask <- NULL
+
+comparisonData2 <- purrr::map_dfr(seq(-30,30,by = 3),
+                                 ~ comparison_allTogether(reference = P0010_processed,
+                                                          target = P0011_processed,
+                                                          theta = .,
+                                                          numCells = 64,
+                                                          maxMissingProp = .85))
+
+estimatedRotationApp(reference = P0010_processed,
+                      target = P0011_processed_new,
+                      reference_v_target_comparison = comparisonData2)
+```
+
