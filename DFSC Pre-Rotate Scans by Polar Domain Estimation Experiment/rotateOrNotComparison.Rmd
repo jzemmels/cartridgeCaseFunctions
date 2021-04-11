@@ -1,0 +1,943 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+
+```
+
+
+```{r}
+# future::plan(future::multisession(workers = future::availableCores() - 1))
+
+allCMCs_compareThetasOff <- bind_rows(sensofarGroup4Comparisons_64Cells %>%
+                                        furrr::future_map_dfr(function(dat1){
+                                          
+                                          purrr::map_dfr(dat1,
+                                                         ~ {
+                                                           
+                                                           cmcs <- .$CMCs
+                                                           
+                                                           tmp <- cmcs %>%
+                                                             group_by(xThresh,corrThresh,thetaThresh) %>%
+                                                             group_split() %>%
+                                                             map_dfr(~ {
+                                                               
+                                                               dat <- cmcR::decision_combineDirections(filter(.,direction == "refToTarget"),
+                                                                                                       filter(.,direction == "targetToRef"),
+                                                                                                       compareThetas = FALSE)
+                                                               
+                                                               tmp <- data.frame(comparisonName = unique(.$comparisonName),
+                                                                                 xThresh = unique(.$xThresh),
+                                                                                 corrThresh = unique(.$corrThresh),
+                                                                                 thetaThresh = unique(.$thetaThresh)) %>%
+                                                                 mutate(originalMethodCount_refToTarget = nrow(dat$originalMethodCMCs[[1]]),
+                                                                        originalMethodCount_targetToRef = nrow(dat$originalMethodCMCs[[2]]),
+                                                                        highCMCCount = nrow(dat$highCMCs))
+                                                               
+                                                               tmp
+                                                             })
+                                                           
+                                                           tmp
+                                                           
+                                                         })
+                                          
+                                        }) %>%
+                                        tidyr::separate(col = comparisonName,into = c("ref","target"),sep = " vs. ",remove = FALSE) %>%
+                                        mutate(highCMCCount = ifelse(ref == target,highCMCCount/2,highCMCCount)),
+                                      topMatchGroup4Comparisons_64Cells %>%
+                                        furrr::future_map_dfr(function(dat1){
+                                          
+                                          purrr::map_dfr(dat1,
+                                                         ~ {
+                                                           
+                                                           cmcs <- .$CMCs
+                                                           
+                                                           tmp <- cmcs %>%
+                                                             group_by(xThresh,corrThresh,thetaThresh) %>%
+                                                             group_split() %>%
+                                                             map_dfr(~ {
+                                                               
+                                                               dat <- cmcR::decision_combineDirections(filter(.,direction == "refToTarget"),
+                                                                                                       filter(.,direction == "targetToRef"),
+                                                                                                       compareThetas = FALSE)
+                                                               
+                                                               tmp <- data.frame(comparisonName = unique(.$comparisonName),
+                                                                                 xThresh = unique(.$xThresh),
+                                                                                 corrThresh = unique(.$corrThresh),
+                                                                                 thetaThresh = unique(.$thetaThresh)) %>%
+                                                                 mutate(originalMethodCount_refToTarget = nrow(dat$originalMethodCMCs[[1]]),
+                                                                        originalMethodCount_targetToRef = nrow(dat$originalMethodCMCs[[2]]),
+                                                                        highCMCCount = nrow(dat$highCMCs))
+                                                               
+                                                               tmp
+                                                             })
+                                                           
+                                                           tmp
+                                                           
+                                                         })
+                                          
+                                        }) %>%
+                                        tidyr::separate(col = comparisonName,into = c("ref","target"),sep = " vs. ",remove = FALSE) %>%
+                                        mutate(highCMCCount = ifelse(ref == target,highCMCCount/2,highCMCCount)),
+                                      crossGroup4Comparisons_64Cells %>%
+                                        furrr::future_map_dfr(function(dat1){
+                                          
+                                          purrr::map_dfr(dat1,
+                                                         ~ {
+                                                           
+                                                           cmcs <- .$CMCs
+                                                           
+                                                           tmp <- cmcs %>%
+                                                             group_by(xThresh,corrThresh,thetaThresh) %>%
+                                                             group_split() %>%
+                                                             map_dfr(~ {
+                                                               
+                                                               dat <- cmcR::decision_combineDirections(filter(.,direction == "refToTarget"),
+                                                                                                       filter(.,direction == "targetToRef"),
+                                                                                                       compareThetas = FALSE)
+                                                               
+                                                               tmp <- data.frame(comparisonName = unique(.$comparisonName),
+                                                                                 xThresh = unique(.$xThresh),
+                                                                                 corrThresh = unique(.$corrThresh),
+                                                                                 thetaThresh = unique(.$thetaThresh)) %>%
+                                                                 mutate(originalMethodCount_refToTarget = nrow(dat$originalMethodCMCs[[1]]),
+                                                                        originalMethodCount_targetToRef = nrow(dat$originalMethodCMCs[[2]]),
+                                                                        highCMCCount = nrow(dat$highCMCs))
+                                                               
+                                                               tmp
+                                                             })
+                                                           
+                                                           tmp
+                                                           
+                                                         })
+                                          
+                                        }) %>%
+                                        tidyr::separate(col = comparisonName,into = c("ref","target"),sep = " vs. ",remove = FALSE) %>%
+                                        mutate(highCMCCount = ifelse(ref == target,highCMCCount/2,highCMCCount)))
+```
+
+```{r}
+allCMCs %>%
+  # pivot_longer(cols = c(originalMethodCount_refToTarget,originalMethodCount_targetToRef),
+  # names_to = "direction",values_to = "OriginalMethodCount") %>%
+  group_by(xThresh,corrThresh,thetaThresh) %>%
+  group_split() %>%
+  map(~ {
+    
+    ggplot(data = .,aes(x = ref,y = target)) +
+      geom_tile(aes(fill = highCMCCount,
+                    # ,colour = classification
+      ),
+      colour = "white",
+      size = .02) +
+      geom_text(aes(label = highCMCCount),size = 2.5) +
+      theme_bw() +
+      theme(panel.grid.major = element_blank(),
+            axis.text = element_text(size = 7),
+            axis.text.x = element_text(angle = 90,vjust = .5,hjust = 1)) +
+      coord_fixed(expand = FALSE) +
+      scale_color_manual(values = c("black","white")) +
+      scale_fill_gradient2(low = "grey50",
+                           mid = "white",
+                           high = "orange",
+                           midpoint = 3) +
+      ggtitle(paste0("Trans. Thresh. = ",unique(.$xThresh),", Corr. Thresh. = ",unique(.$corrThresh)))
+    
+  })
+```
+
+
+```{r}
+allCMCs_rotationPreAlign_compareThetasOff <- bind_rows(sensofarGroup4Comparisons_64Cells_rotatePreAlign %>%
+                                                         furrr::future_map_dfr(function(dat1){
+                                                           
+                                                           purrr::map_dfr(dat1,
+                                                                          ~ {
+                                                                            
+                                                                            cmcs <- .$CMCs
+                                                                            
+                                                                            tmp <- cmcs %>%
+                                                                              group_by(xThresh,corrThresh,thetaThresh) %>%
+                                                                              group_split() %>%
+                                                                              map_dfr(~ {
+                                                                                
+                                                                                dat <- cmcR::decision_combineDirections(filter(.,direction == "refToTarget"),
+                                                                                                                        filter(.,direction == "targetToRef"),
+                                                                                                                        compareThetas = FALSE)
+                                                                                
+                                                                                tmp <- data.frame(comparisonName = unique(.$comparisonName),
+                                                                                                  xThresh = unique(.$xThresh),
+                                                                                                  corrThresh = unique(.$corrThresh),
+                                                                                                  thetaThresh = unique(.$thetaThresh)) %>%
+                                                                                  mutate(originalMethodCount_refToTarget = nrow(dat$originalMethodCMCs[[1]]),
+                                                                                         originalMethodCount_targetToRef = nrow(dat$originalMethodCMCs[[2]]),
+                                                                                         highCMCCount = nrow(dat$highCMCs))
+                                                                                
+                                                                                tmp
+                                                                              })
+                                                                            
+                                                                            tmp
+                                                                            
+                                                                          })
+                                                           
+                                                         }) %>%
+                                                         tidyr::separate(col = comparisonName,into = c("ref","target"),sep = " vs. ",remove = FALSE) %>%
+                                                         mutate(highCMCCount = ifelse(ref == target,highCMCCount/2,highCMCCount)),
+                                                       topMatchGroup4Comparisons_64Cells_rotatePreAlign %>%
+                                                         furrr::future_map_dfr(function(dat1){
+                                                           
+                                                           purrr::map_dfr(dat1,
+                                                                          ~ {
+                                                                            
+                                                                            cmcs <- .$CMCs
+                                                                            
+                                                                            tmp <- cmcs %>%
+                                                                              group_by(xThresh,corrThresh,thetaThresh) %>%
+                                                                              group_split() %>%
+                                                                              map_dfr(~ {
+                                                                                
+                                                                                dat <- cmcR::decision_combineDirections(filter(.,direction == "refToTarget"),
+                                                                                                                        filter(.,direction == "targetToRef"),
+                                                                                                                        compareThetas = FALSE)
+                                                                                
+                                                                                tmp <- data.frame(comparisonName = unique(.$comparisonName),
+                                                                                                  xThresh = unique(.$xThresh),
+                                                                                                  corrThresh = unique(.$corrThresh),
+                                                                                                  thetaThresh = unique(.$thetaThresh)) %>%
+                                                                                  mutate(originalMethodCount_refToTarget = nrow(dat$originalMethodCMCs[[1]]),
+                                                                                         originalMethodCount_targetToRef = nrow(dat$originalMethodCMCs[[2]]),
+                                                                                         highCMCCount = nrow(dat$highCMCs))
+                                                                                
+                                                                                tmp
+                                                                              })
+                                                                            
+                                                                            tmp
+                                                                            
+                                                                          })
+                                                           
+                                                         }) %>%
+                                                         tidyr::separate(col = comparisonName,into = c("ref","target"),sep = " vs. ",remove = FALSE) %>%
+                                                         mutate(highCMCCount = ifelse(ref == target,highCMCCount/2,highCMCCount)),
+                                                       crossGroup4Comparisons_64Cells_rotatePreAlign %>%
+                                                         furrr::future_map_dfr(function(dat1){
+                                                           
+                                                           purrr::map_dfr(dat1,
+                                                                          ~ {
+                                                                            
+                                                                            cmcs <- .$CMCs
+                                                                            
+                                                                            tmp <- cmcs %>%
+                                                                              group_by(xThresh,corrThresh,thetaThresh) %>%
+                                                                              group_split() %>%
+                                                                              map_dfr(~ {
+                                                                                
+                                                                                dat <- cmcR::decision_combineDirections(filter(.,direction == "refToTarget"),
+                                                                                                                        filter(.,direction == "targetToRef"),
+                                                                                                                        compareThetas = FALSE)
+                                                                                
+                                                                                tmp <- data.frame(comparisonName = unique(.$comparisonName),
+                                                                                                  xThresh = unique(.$xThresh),
+                                                                                                  corrThresh = unique(.$corrThresh),
+                                                                                                  thetaThresh = unique(.$thetaThresh)) %>%
+                                                                                  mutate(originalMethodCount_refToTarget = nrow(dat$originalMethodCMCs[[1]]),
+                                                                                         originalMethodCount_targetToRef = nrow(dat$originalMethodCMCs[[2]]),
+                                                                                         highCMCCount = nrow(dat$highCMCs))
+                                                                                
+                                                                                tmp
+                                                                              })
+                                                                            
+                                                                            tmp
+                                                                            
+                                                                          })
+                                                           
+                                                         }) %>%
+                                                         tidyr::separate(col = comparisonName,into = c("ref","target"),sep = " vs. ",remove = FALSE) %>%
+                                                         mutate(highCMCCount = ifelse(ref == target,highCMCCount/2,highCMCCount)))
+```
+
+```{r}
+allCMCs_rotationPreAlign_compareThetasOff %>%
+  mutate(highCMCCount = ifelse(ref == target,2*highCMCCount,highCMCCount)) %>%
+  # pivot_longer(cols = c(originalMethodCount_refToTarget,originalMethodCount_targetToRef),
+  # names_to = "direction",values_to = "OriginalMethodCount") %>%
+  group_by(xThresh,corrThresh,thetaThresh) %>%
+  group_split() %>%
+  map(~ {
+    
+    filter(.,highCMCCount > 0) %>%
+      ggplot(aes(x = ref,y = target)) +
+      geom_tile(aes(fill = highCMCCount,
+                    # ,colour = classification
+      ),
+      colour = "white",
+      size = .02) +
+      geom_text(aes(label = highCMCCount),size = 2.5) +
+      theme_bw() +
+      theme(panel.grid.major = element_blank(),
+            axis.text = element_text(size = 7),
+            axis.text.x = element_text(angle = 90,vjust = .5,hjust = 1)) +
+      coord_fixed(expand = FALSE) +
+      scale_color_manual(values = c("black","white")) +
+      scale_fill_gradient2(low = "grey50",
+                           mid = "white",
+                           high = "orange",
+                           midpoint = 3) +
+      ggtitle(paste0("Trans. Thresh. = ",unique(.$xThresh),", Corr. Thresh. = ",unique(.$corrThresh)))
+    
+  })
+```
+
+```{r}
+matchDictionary <-
+  data.frame(scan = unique(allCMCs_rotationPreAlign$ref)) %>%
+  mutate(group = c(1,1,1,2,2,2,3,3,3,4,4,4,5,5,5, #sensofar groupings
+                   5,5,5,2,2,2,4,4,4,1,1,1,3,3,3)) #topmatch groupings
+```
+
+```{r}
+bind_rows(allCMCs %>%
+            mutate(preprocess = "not aligned"),
+          allCMCs_rotationPreAlign %>%
+            mutate(preprocess = "pre-aligned")) %>%
+  pivot_longer(cols = c(originalMethodCount_refToTarget,
+                        originalMethodCount_targetToRef),
+               names_to = "direction",
+               values_to = "originalMethodCount") %>%
+  mutate(direction = ifelse(direction == "originalMethodCount_refToTarget","refToTarget","targetToRef")) %>%
+  mutate(referenceNew = ifelse(direction == "targetToRef",target,ref),
+         targetNew = ifelse(direction == "targetToRef",ref,target)) %>%
+  select(-c(ref,target)) %>%
+  rename(reference = referenceNew,
+         target = targetNew) %>%
+  left_join(matchDictionary,
+            by = c("reference" = "scan")) %>%
+  rename(referenceGroup = group) %>%
+  left_join(matchDictionary,
+            by = c("target" = "scan")) %>%
+  rename(targetGroup = group) %>%
+  mutate(type = ifelse(referenceGroup == targetGroup,"match","non-match"))  %>%
+  #values calculated above are incorrectly divided by 2
+  mutate(highCMCCount = ifelse(reference == target & preprocess == "pre-aligned",2*highCMCCount,highCMCCount)) %>%
+  pivot_longer(cols = c(highCMCCount,originalMethodCount),
+               names_to = "method",
+               values_to = "count") %>%
+  mutate(method = ifelse(method == "highCMCCount","highCMC","originalMethod")) %>%
+  pivot_wider(names_from = preprocess,values_from = count) %>%
+  filter(method == "originalMethod") %>%
+  # pivot_wider(names_from = preprocess,
+  # values_from = highCMCCount)  %>%
+  group_by(xThresh,corrThresh,thetaThresh) %>%
+  group_split() %>%
+  map(~ {
+    
+    aucNotAlignedHighCMC <- filter(.,reference != target & method == "originalMethod") %>%
+      select(type,`not aligned`) %>%
+      rename(cmcCount = `not aligned`) %>%
+      calcAUC() %>%
+      pull(AUC) %>%
+      unique()
+    
+    aucAlignedHighCMC <- filter(.,reference != target & method == "originalMethod") %>%
+      select(type,`pre-aligned`) %>%
+      rename(cmcCount = `pre-aligned`) %>%
+      calcAUC() %>%
+      pull(AUC) %>%
+      unique()
+    
+    ggplot(data = .,
+           aes(x = `not aligned`,
+               y = `pre-aligned`)) +
+      geom_point() +
+      facet_wrap(method ~ type) +
+      theme_bw() +
+      coord_fixed() +
+      ggtitle(paste0("AUC Not Aligned = ",round(aucNotAlignedHighCMC,3),", AUC Aligned = ",round(aucAlignedHighCMC,3),"\nTrans. Thresh. = ",unique(.$xThresh),", Corr. Thresh. = ",unique(.$corrThresh))) +
+      theme(title = element_text(size = 8)) +
+      xlab("Not Rotationally Aligned CMCs") +
+      ylab("Rotationally Aligned CMCs") +
+      geom_abline()
+  })
+```
+
+
+
+```{r}
+bind_rows(allCMCs %>%
+            mutate(preprocess = "not aligned"),
+          allCMCs_rotationPreAlign %>%
+            mutate(preprocess = "pre-aligned")) %>%
+  pivot_longer(cols = c(originalMethodCount_refToTarget,
+                        originalMethodCount_targetToRef),
+               names_to = "direction",
+               values_to = "originalMethodCount") %>%
+  mutate(direction = ifelse(direction == "originalMethodCount_refToTarget","refToTarget","targetToRef")) %>%
+  mutate(referenceNew = ifelse(direction == "targetToRef",target,ref),
+         targetNew = ifelse(direction == "targetToRef",ref,target)) %>%
+  select(-c(ref,target)) %>%
+  rename(reference = referenceNew,
+         target = targetNew) %>%
+  left_join(matchDictionary,
+            by = c("reference" = "scan")) %>%
+  rename(referenceGroup = group) %>%
+  left_join(matchDictionary,
+            by = c("target" = "scan")) %>%
+  rename(targetGroup = group) %>%
+  mutate(type = ifelse(referenceGroup == targetGroup,"match","non-match"))  %>%
+  #values calculated above are incorrectly divided by 2
+  mutate(highCMCCount = ifelse(reference == target & preprocess == "pre-aligned",2*highCMCCount,highCMCCount)) %>%
+  pivot_longer(cols = c(highCMCCount,originalMethodCount),
+               names_to = "method",
+               values_to = "count") %>%
+  mutate(method = ifelse(method == "highCMCCount","highCMC","originalMethod")) %>%
+  pivot_wider(names_from = preprocess,values_from = count) %>%
+  filter(method == "highCMC") %>%
+  filter(xThresh == 20 & corrThresh == .45) %>%
+  # pivot_wider(names_from = preprocess,
+  # values_from = highCMCCount)  %>%
+  group_by(xThresh,corrThresh,thetaThresh) %>%
+  group_split() %>%
+  map(~ {
+    
+    aucNotAlignedHighCMC <- filter(.,reference != target & method == "highCMC") %>%
+      select(type,`not aligned`) %>%
+      rename(cmcCount = `not aligned`) %>%
+      calcAUC() %>%
+      pull(AUC) %>%
+      unique()
+    
+    aucAlignedHighCMC <- filter(.,reference != target & method == "highCMC") %>%
+      select(type,`pre-aligned`) %>%
+      rename(cmcCount = `pre-aligned`) %>%
+      calcAUC() %>%
+      pull(AUC) %>%
+      unique()
+    
+    ggplot(data = .,
+           aes(x = `not aligned`,
+               y = `pre-aligned`)) +
+      geom_point() +
+      facet_wrap(method ~ type) +
+      theme_bw() +
+      coord_fixed() +
+      ggtitle(paste0("Not Aligned AUC = ",round(aucNotAlignedHighCMC,3),", Aligned AUC = ",round(aucAlignedHighCMC,3),", Trans. Thresh. = ",unique(.$xThresh),", Corr. Thresh. = ",unique(.$corrThresh))) +
+      theme(title = element_text(size = 8)) +
+      xlab("Not Rotationally Aligned CMCs") +
+      ylab("Rotationally Aligned CMCs") +
+      geom_abline()
+  })
+```
+
+
+```{r}
+debugonce(calcAUC)
+
+bind_rows(allCMCs %>%
+            mutate(preprocess = "not aligned"),
+          allCMCs_rotationPreAlign %>%
+            mutate(preprocess = "pre-aligned")) %>%
+  pivot_longer(cols = c(originalMethodCount_refToTarget,
+                        originalMethodCount_targetToRef),
+               names_to = "direction",
+               values_to = "originalMethodCount") %>%
+  mutate(direction = ifelse(direction == "originalMethodCount_refToTarget","refToTarget","targetToRef")) %>%
+  mutate(referenceNew = ifelse(direction == "targetToRef",target,ref),
+         targetNew = ifelse(direction == "targetToRef",ref,target)) %>%
+  select(-c(ref,target)) %>%
+  rename(reference = referenceNew,
+         target = targetNew) %>%
+  left_join(matchDictionary,
+            by = c("reference" = "scan")) %>%
+  rename(referenceGroup = group) %>%
+  left_join(matchDictionary,
+            by = c("target" = "scan")) %>%
+  rename(targetGroup = group) %>%
+  mutate(type = ifelse(referenceGroup == targetGroup,"match","non-match"))  %>%
+  #values calculated above are incorrectly divided by 2
+  mutate(highCMCCount = ifelse(reference == target & preprocess == "pre-aligned",2*highCMCCount,highCMCCount)) %>%
+  pivot_longer(cols = c(highCMCCount,originalMethodCount),
+               names_to = "method",
+               values_to = "count") %>%
+  mutate(method = ifelse(method == "highCMCCount","highCMC","originalMethod")) %>%
+  pivot_wider(names_from = preprocess,values_from = count) %>%
+  filter(method == "highCMC") %>%
+  filter(xThresh == 20 & corrThresh == .45) %>%
+  # pivot_wider(names_from = preprocess,
+  # values_from = highCMCCount)  %>%
+  group_by(xThresh,corrThresh,thetaThresh) %>%
+  group_split() %>%
+  map(~ {
+    
+    aucNotAlignedHighCMC <- filter(.,reference != target & method == "highCMC") %>%
+      select(type,`not aligned`) %>%
+      rename(cmcCount = `not aligned`) %>%
+      calcAUC() %>%
+      pull(AUC) %>%
+      unique()
+    
+    aucAlignedHighCMC <- filter(.,reference != target & method == "highCMC") %>%
+      select(type,`pre-aligned`) %>%
+      rename(cmcCount = `pre-aligned`) %>%
+      calcAUC() %>%
+      pull(AUC) %>%
+      unique()
+    
+    ggplot(data = .,
+           aes(x = `not aligned`,
+               y = `pre-aligned`)) +
+      geom_point() +
+      facet_wrap(method ~ type) +
+      theme_bw() +
+      coord_fixed() +
+      ggtitle(paste0("Not Aligned AUC = ",round(aucNotAlignedHighCMC,3),", Aligned AUC = ",round(aucAlignedHighCMC,3),", Trans. Thresh. = ",unique(.$xThresh),", Corr. Thresh. = ",unique(.$corrThresh))) +
+      theme(title = element_text(size = 8)) +
+      xlab("Not Rotationally Aligned CMCs") +
+      ylab("Rotationally Aligned CMCs") +
+      geom_abline()
+  })
+
+
+```
+
+```{r}
+dat <- bind_rows(allCMCs_compareThetasOff %>%
+                   mutate(preprocess = "not aligned"),
+                 allCMCs_rotationPreAlign_compareThetasOff %>%
+                   mutate(preprocess = "pre-aligned")) %>%
+  pivot_longer(cols = c(originalMethodCount_refToTarget,
+                        originalMethodCount_targetToRef),
+               names_to = "direction",
+               values_to = "originalMethodCount") %>%
+  mutate(direction = ifelse(direction == "originalMethodCount_refToTarget","refToTarget","targetToRef")) %>%
+  mutate(referenceNew = ifelse(direction == "targetToRef",target,ref),
+         targetNew = ifelse(direction == "targetToRef",ref,target)) %>%
+  select(-c(ref,target)) %>%
+  rename(reference = referenceNew,
+         target = targetNew) %>%
+  left_join(matchDictionary,
+            by = c("reference" = "scan")) %>%
+  rename(referenceGroup = group) %>%
+  left_join(matchDictionary,
+            by = c("target" = "scan")) %>%
+  rename(targetGroup = group) %>%
+  mutate(type = ifelse(referenceGroup == targetGroup,"match","non-match"))  %>%
+  #values calculated above are incorrectly divided by 2
+  mutate(highCMCCount = ifelse(reference == target & preprocess == "pre-aligned",2*highCMCCount,highCMCCount)) %>%
+  pivot_longer(cols = c(highCMCCount,originalMethodCount),
+               names_to = "method",
+               values_to = "count") %>%
+  mutate(method = ifelse(method == "highCMCCount","highCMC","originalMethod")) %>%
+  pivot_wider(names_from = preprocess,values_from = count) %>%
+  filter(method == "highCMC") %>%
+  filter(xThresh == 20 & corrThresh == .45 & reference != target)
+
+dat1 <- purrr::map_dfr(seq(0,max(c(dat$`not aligned`,dat$`pre-aligned`)),by = .5),
+                       function(thresh){
+                         
+                         dat %>%
+                           mutate(notAlignedClassif = ifelse(`not aligned` <= thresh,"non-match","match"),
+                                  alignedClassif = ifelse(`pre-aligned` <= thresh,"non-match","match")) %>%
+                           mutate(notAlignedCorrect = ifelse(type == notAlignedClassif,1,0),
+                                  alignedCorrect = ifelse(type == alignedClassif,1,0)) %>%
+                           ungroup() %>%
+                           summarise(notAlignedAcc = mean(notAlignedCorrect),
+                                     alignedAcc = mean(alignedCorrect),
+                                     thresh = thresh)
+                         
+                       }) %>%
+  mutate(equalErrors = ifelse(notAlignedAcc == alignedAcc,TRUE,FALSE))
+
+dat1 %>%
+  pivot_longer(cols = c(notAlignedAcc,alignedAcc)) %>%
+  ggplot(aes(x=thresh,y = value)) +
+  geom_line(aes(colour = name)) +
+  # geom_line(aes(y=notAlignedAcc),colour = "blue") +
+  # geom_line(aes(y=alignedAcc),colour = "red") +
+  geom_point(data = dat1 %>% filter(equalErrors),
+             aes(y = notAlignedAcc),
+             size = 2) +
+  # ggrepel::geom_text_repel(data = dat1 %>% filter(equalErrors),
+  #           aes(y = notAlignedAcc,label = paste0("(",thresh,",",round(notAlignedAcc,3),")"))) +
+  theme_bw() +
+  xlab("CMC Threshold") +
+  ylab("Accuracy")
+```
+
+
+
+```{r}
+largeDifferenceComparisons <- bind_rows(allCMCs %>%
+                                          mutate(preprocess = "not aligned"),
+                                        allCMCs_rotationPreAlign %>%
+                                          mutate(preprocess = "pre-aligned")) %>%
+  pivot_longer(cols = c(originalMethodCount_refToTarget,
+                        originalMethodCount_targetToRef),
+               names_to = "direction",
+               values_to = "originalMethodCount") %>%
+  mutate(direction = ifelse(direction == "originalMethodCount_refToTarget","refToTarget","targetToRef")) %>%
+  mutate(referenceNew = ifelse(direction == "targetToRef",target,ref),
+         targetNew = ifelse(direction == "targetToRef",ref,target)) %>%
+  select(-c(ref,target)) %>%
+  rename(reference = referenceNew,
+         target = targetNew) %>%
+  left_join(matchDictionary,
+            by = c("reference" = "scan")) %>%
+  rename(referenceGroup = group) %>%
+  left_join(matchDictionary,
+            by = c("target" = "scan")) %>%
+  rename(targetGroup = group) %>%
+  mutate(type = ifelse(referenceGroup == targetGroup,"match","non-match"))  %>%
+  #values calculated above are incorrectly divided by 2
+  mutate(highCMCCount = ifelse(reference == target & preprocess == "pre-aligned",2*highCMCCount,highCMCCount)) %>%
+  pivot_longer(cols = c(highCMCCount,originalMethodCount),
+               names_to = "method",
+               values_to = "count") %>%
+  mutate(method = ifelse(method == "highCMCCount","highCMC","originalMethod")) %>%
+  pivot_wider(names_from = preprocess,values_from = count) %>%
+  mutate(cmcDiff = `pre-aligned` - `not aligned`) %>%
+  arrange(desc(abs(cmcDiff))) %>%
+  filter(type == "match" & xThresh == 20 & corrThresh == .45) %>%
+  select(comparisonName,direction,xThresh,corrThresh,`not aligned`,`pre-aligned`,cmcDiff) %>%
+  filter(abs(cmcDiff) >= 10) %>%
+  filter(cmcDiff < 10) %>%
+  pull(comparisonName) %>%
+  unique()
+```
+
+
+
+```{r}
+allComparisonDat <- bind_rows(sensofarGroup4Comparisons_64Cells %>%
+                                purrr::map_dfr(function(comparisonDat1){
+                                  
+                                  purrr::map_dfr(comparisonDat1,
+                                                 function(comparisonDat2){
+                                                   
+                                                   comparisonDat2$comparisonDat
+                                                   
+                                                 })
+                                  
+                                }) %>%
+                                mutate(preprocess = "notAligned"),
+                              topMatchGroup4Comparisons_64Cells %>%
+                                purrr::map_dfr(function(comparisonDat1){
+                                  
+                                  purrr::map_dfr(comparisonDat1,
+                                                 function(comparisonDat2){
+                                                   
+                                                   comparisonDat2$comparisonDat
+                                                   
+                                                 })
+                                  
+                                }) %>%
+                                mutate(preprocess = "notAligned"),
+                              crossGroup4Comparisons_64Cells %>%
+                                purrr::map_dfr(function(comparisonDat1){
+                                  
+                                  purrr::map_dfr(comparisonDat1,
+                                                 function(comparisonDat2){
+                                                   
+                                                   comparisonDat2$comparisonDat
+                                                   
+                                                 })
+                                  
+                                }) %>%
+                                mutate(preprocess = "notAligned"),
+                              sensofarGroup4Comparisons_64Cells_rotatePreAlign %>%
+                                purrr::map_dfr(function(comparisonDat1){
+                                  
+                                  purrr::map_dfr(comparisonDat1,
+                                                 function(comparisonDat2){
+                                                   
+                                                   comparisonDat2$comparisonDat
+                                                   
+                                                 })
+                                  
+                                }) %>%
+                                mutate(preprocess = "aligned"),
+                              topMatchGroup4Comparisons_64Cells_rotatePreAlign %>%
+                                purrr::map_dfr(function(comparisonDat1){
+                                  
+                                  purrr::map_dfr(comparisonDat1,
+                                                 function(comparisonDat2){
+                                                   
+                                                   comparisonDat2$comparisonDat
+                                                   
+                                                 })
+                                  
+                                }) %>%
+                                mutate(preprocess = "aligned"),
+                              crossGroup4Comparisons_64Cells_rotatePreAlign %>%
+                                purrr::map_dfr(function(comparisonDat1){
+                                  
+                                  purrr::map_dfr(comparisonDat1,
+                                                 function(comparisonDat2){
+                                                   
+                                                   comparisonDat2$comparisonDat
+                                                   
+                                                 })
+                                  
+                                }) %>%
+                                mutate(preprocess = "aligned"))
+```
+
+
+```{r}
+#Checking if the type of comparison (sensofar vs. sensofar, etc.) indicates
+#differing performance. For comparisons where not aligning seems to do better
+#than aligning, it appears that sensofar vs. topmatch comparisons make up the
+#majority
+allComparisonDat %>%
+  filter(comparisonName %in% largeDifferenceComparisons) %>%
+  group_by(comparisonName,direction,preprocess) %>%
+  mutate(highCMCDistrib = decision_highCMC_cmcThetaDistrib(cellIndex = cellIndex,x=x,y=y,theta=theta,corr=pairwiseCompCor,xThresh = 20,corrThresh = .45)) %>%
+  group_by(comparisonName,direction,preprocess,theta) %>%
+  summarise(highCMCDistrib = sum(highCMCDistrib == "CMC Candidate"),.groups = "keep") %>%
+  ungroup() %>%
+  group_by(comparisonName,direction,preprocess) %>%
+  filter(highCMCDistrib == max(highCMCDistrib)) %>%
+  arrange(desc(abs(theta))) %>%
+  tidyr::separate(col = comparisonName,
+                  into = c("reference","target"),
+                  sep = " vs. ",
+                  remove = FALSE) %>%
+  mutate(reference = str_remove(reference,"group4_"),
+         target = str_remove(target,"group4_")) %>%
+  mutate(referenceType = ifelse(str_detect(reference,"K004"),"topMatch","sensofar"),
+         targetType = ifelse(str_detect(target,"K004"),"topMatch","sensofar")) %>%
+  ungroup() %>%
+  mutate(comparisonGroupType = paste(referenceType,"vs.",targetType))  %>%
+  summarise(topMatch_v_topMatch = sum(comparisonGroupType == "topMatch vs. topMatch"),
+            sensofar_v_topMatch = sum(comparisonGroupType == "sensofar vs. topMatch"),
+            sensofar_v_sensofar = sum(comparisonGroupType == "sensofar vs. sensofar"))
+```
+
+```{r}
+bind_rows(allCMCs_compareThetasOff %>%
+            mutate(preprocess = "not aligned"),
+          allCMCs_rotationPreAlign_compareThetasOff %>%
+            mutate(preprocess = "pre-aligned")) %>%
+  pivot_longer(cols = c(originalMethodCount_refToTarget,
+                        originalMethodCount_targetToRef),
+               names_to = "direction",
+               values_to = "originalMethodCount") %>%
+  mutate(direction = ifelse(direction == "originalMethodCount_refToTarget","refToTarget","targetToRef")) %>%
+  mutate(referenceNew = ifelse(direction == "targetToRef",target,ref),
+         targetNew = ifelse(direction == "targetToRef",ref,target)) %>%
+  select(-c(ref,target)) %>%
+  rename(reference = referenceNew,
+         target = targetNew) %>%
+  left_join(matchDictionary,
+            by = c("reference" = "scan")) %>%
+  rename(referenceGroup = group) %>%
+  left_join(matchDictionary,
+            by = c("target" = "scan")) %>%
+  rename(targetGroup = group) %>%
+  mutate(type = ifelse(referenceGroup == targetGroup,"match","non-match"))  %>%
+  #values calculated above are incorrectly divided by 2
+  mutate(highCMCCount = ifelse(reference == target & preprocess == "pre-aligned",2*highCMCCount,highCMCCount)) %>%
+  pivot_longer(cols = c(highCMCCount,originalMethodCount),
+               names_to = "method",
+               values_to = "count") %>%
+  mutate(method = ifelse(method == "highCMCCount","highCMC","originalMethod")) %>%
+  pivot_wider(names_from = preprocess,values_from = count) %>%
+  mutate(cmcDiff = `pre-aligned` - `not aligned`) %>%
+  arrange(desc(abs(cmcDiff))) %>%
+  filter(type == "match") %>%
+  select(comparisonName,direction,xThresh,corrThresh,`not aligned`,`pre-aligned`,cmcDiff) %>%
+  filter(abs(cmcDiff) >= 1) %>%
+  filter(cmcDiff > 0) %>%
+  ungroup() %>%
+  group_by(comparisonName) %>%
+  tally(sort = TRUE) 
+```
+
+
+```{r}
+bind_rows(allCMCs_compareThetasOff %>%
+            mutate(preprocess = "not aligned"),
+          allCMCs_rotationPreAlign_compareThetasOff %>%
+            mutate(preprocess = "pre-aligned")) %>%
+  pivot_longer(cols = c(originalMethodCount_refToTarget,
+                        originalMethodCount_targetToRef),
+               names_to = "direction",
+               values_to = "originalMethodCount") %>%
+  mutate(direction = ifelse(direction == "originalMethodCount_refToTarget","refToTarget","targetToRef")) %>%
+  mutate(referenceNew = ifelse(direction == "targetToRef",target,ref),
+         targetNew = ifelse(direction == "targetToRef",ref,target)) %>%
+  select(-c(ref,target)) %>%
+  rename(reference = referenceNew,
+         target = targetNew) %>%
+  left_join(matchDictionary,
+            by = c("reference" = "scan")) %>%
+  rename(referenceGroup = group) %>%
+  left_join(matchDictionary,
+            by = c("target" = "scan")) %>%
+  rename(targetGroup = group) %>%
+  mutate(type = ifelse(referenceGroup == targetGroup,"match","non-match"))  %>%
+  #values calculated above are incorrectly divided by 2
+  mutate(highCMCCount = ifelse(reference == target & preprocess == "pre-aligned",2*highCMCCount,highCMCCount)) %>%
+  pivot_longer(cols = c(highCMCCount,originalMethodCount),
+               names_to = "method",
+               values_to = "count") %>%
+  mutate(method = ifelse(method == "highCMCCount","highCMC","originalMethod")) %>%
+  pivot_wider(names_from = preprocess,values_from = count) %>%
+  mutate(cmcDiff = `pre-aligned` - `not aligned`) %>%
+  arrange(desc(abs(cmcDiff))) %>%
+  filter(type == "match") %>%
+  select(comparisonName,direction,xThresh,corrThresh,`not aligned`,`pre-aligned`,cmcDiff) %>%
+  filter(abs(cmcDiff) >= 1) %>%
+  filter(cmcDiff < 0) %>%
+  ungroup() %>%
+  group_by(comparisonName) %>%
+  tally(sort = TRUE) 
+```
+
+
+```{r}
+bind_rows(allCMCs_compareThetasOff %>%
+            mutate(preprocess = "not aligned"),
+          allCMCs_rotationPreAlign_compareThetasOff %>%
+            mutate(preprocess = "pre-aligned")) %>%
+  pivot_longer(cols = c(originalMethodCount_refToTarget,
+                        originalMethodCount_targetToRef),
+               names_to = "direction",
+               values_to = "originalMethodCount") %>%
+  mutate(direction = ifelse(direction == "originalMethodCount_refToTarget","refToTarget","targetToRef")) %>%
+  mutate(referenceNew = ifelse(direction == "targetToRef",target,ref),
+         targetNew = ifelse(direction == "targetToRef",ref,target)) %>%
+  select(-c(ref,target)) %>%
+  rename(reference = referenceNew,
+         target = targetNew) %>%
+  left_join(matchDictionary,
+            by = c("reference" = "scan")) %>%
+  rename(referenceGroup = group) %>%
+  left_join(matchDictionary,
+            by = c("target" = "scan")) %>%
+  rename(targetGroup = group) %>%
+  mutate(type = ifelse(referenceGroup == targetGroup,"match","non-match"))  %>%
+  #values calculated above are incorrectly divided by 2
+  mutate(highCMCCount = ifelse(reference == target & preprocess == "pre-aligned",2*highCMCCount,highCMCCount)) %>%
+  pivot_longer(cols = c(highCMCCount,originalMethodCount),
+               names_to = "method",
+               values_to = "count") %>%
+  mutate(method = ifelse(method == "highCMCCount","highCMC","originalMethod")) %>%
+  pivot_wider(names_from = preprocess,values_from = count) %>%
+  mutate(cmcDiff = `pre-aligned` - `not aligned`) %>%
+  arrange(desc(abs(cmcDiff))) %>%
+  filter(type == "match") %>%
+  select(comparisonName,direction,xThresh,corrThresh,`not aligned`,`pre-aligned`,cmcDiff) %>%
+  filter(abs(cmcDiff) >= 10) %>%
+  filter(cmcDiff < 10) %>%
+  group_by(comparisonName) %>%
+  tally(sort = TRUE)
+```
+
+```{r}
+allComparisonDat %>%
+  filter(comparisonName %in% largeDifferenceComparisons) %>%
+  group_by(comparisonName,direction,preprocess,cellIndex) %>%
+  filter(pairwiseCompCor == max(pairwiseCompCor)) %>%
+  ungroup() %>%
+  group_by(comparisonName,direction,preprocess) %>%
+  summarise(theta = median(theta)) %>%
+  arrange(desc(abs(theta)))
+```
+
+```{r}
+dat <- 
+  topMatchGroup4Comparisons_64Cells[[11]][[10]][[1]] %>%
+  # crossGroup4Comparisons_64Cells[[6]][[6]][[1]] %>%
+  group_by(direction) %>%
+  mutate(cmcThetaDistribClassif = cmcR::decision_highCMC_cmcThetaDistrib(cellIndex = cellIndex,x = x,y = y,theta = theta,corr = pairwiseCompCor,xThresh = 20,corrThresh = .45))
+
+dat %>%
+  filter(direction == "refToTarget") %>%
+  decision_highCMC_identifyHighCMCThetas(tau = 1) %>%
+  filter(cmcThetaDistribClassif == "CMC Candidate") %>%
+  ggplot() +
+  geom_bar(aes(x = theta, fill = thetaCMCIdentif),
+           stat = "count",
+           alpha = .7) +
+  geom_hline(aes(yintercept = max(cmcCandidateCount) - 1),
+             linetype = "dashed") +
+  scale_fill_manual(values = c("black","gray50")) +
+  theme_bw() +
+  facet_wrap(~ direction) +
+  ylab("CMC Candidate Count") +
+  xlab(expression(theta)) +
+  xlim(c(min(-30),max(30)))
+
+dat %>%
+  filter(direction == "targetToRef") %>%
+  decision_highCMC_identifyHighCMCThetas(tau = 1) %>%
+  filter(cmcThetaDistribClassif == "CMC Candidate") %>%
+  ggplot() +
+  geom_bar(aes(x = theta, fill = thetaCMCIdentif),
+           stat = "count",
+           alpha = .7) +
+  geom_hline(aes(yintercept = max(cmcCandidateCount) - 1),
+             linetype = "dashed") +
+  scale_fill_manual(values = c("black","gray50")) +
+  theme_bw() +
+  facet_wrap(~ direction) +
+  ylab("CMC Candidate Count") +
+  xlab(expression(theta)) +
+  xlim(c(min(-30),max(30)))
+```
+
+
+
+```{r}
+dat1 <- 
+  topMatchGroup4Comparisons_64Cells_rotatePreAlign[[11]][[10 ]][[1]] %>%
+  # crossGroup4Comparisons_64Cells_rotatePreAlign[[6]][[6]][[1]] %>%
+  group_by(direction) %>%
+  mutate(cmcThetaDistribClassif = cmcR::decision_highCMC_cmcThetaDistrib(cellIndex = cellIndex,x = x,y = y,theta = theta,corr = pairwiseCompCor,xThresh = 20,corrThresh = .45))
+
+dat1 %>%
+  filter(direction == "refToTarget") %>%
+  decision_highCMC_identifyHighCMCThetas(tau = 1) %>%
+  filter(cmcThetaDistribClassif == "CMC Candidate") %>%
+  ggplot() +
+  geom_bar(aes(x = theta, fill = thetaCMCIdentif),
+           stat = "count",
+           alpha = .7) +
+  geom_hline(aes(yintercept = max(cmcCandidateCount) - 1),
+             linetype = "dashed") +
+  scale_fill_manual(values = c("black","gray50")) +
+  theme_bw() +
+  facet_wrap(~ direction) +
+  ylab("CMC Candidate Count") +
+  xlab(expression(theta)) +
+  xlim(c(min(-30),max(30)))
+
+dat1 %>%
+  filter(direction == "targetToRef") %>%
+  decision_highCMC_identifyHighCMCThetas(tau = 1) %>%
+  filter(cmcThetaDistribClassif == "CMC Candidate") %>%
+  ggplot() +
+  geom_bar(aes(x = theta, fill = thetaCMCIdentif),
+           stat = "count",
+           alpha = .7) +
+  geom_hline(aes(yintercept = max(cmcCandidateCount) - 1),
+             linetype = "dashed") +
+  scale_fill_manual(values = c("black","gray50")) +
+  theme_bw() +
+  facet_wrap(~ direction) +
+  ylab("CMC Candidate Count") +
+  xlab(expression(theta)) +
+  xlim(c(min(-31),max(31)))
+```
+
+
+
+```{r}
+debugonce(cmcR:::decision_highCMC_classifyCMCs)
+
+dat1 %>%
+  filter(direction == "refToTarget") %>%
+  mutate(highCMCClassif = decision_CMC(cellIndex = cellIndex,x=x,y=y,theta=theta,corr=pairwiseCompCor,tau = 1,corrThresh = .45))
+```
+

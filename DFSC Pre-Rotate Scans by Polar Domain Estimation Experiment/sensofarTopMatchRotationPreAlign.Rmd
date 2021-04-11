@@ -1,0 +1,1156 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r setup}
+library(cmcR)
+library(x3ptools)
+library(tidyverse)
+```
+
+```{r}
+x3p_delete <- function(x3p, mask_vals) {
+  idx <- which(t(as.matrix(x3p$mask)) %in% mask_vals)
+  x3p$surface.matrix[idx] <- NA
+  x3p
+}
+
+x3p_trim_na <- function(x3p) {
+  #  browser()
+  rows <- apply(x3p$surface.matrix, MARGIN=1, FUN=function(x) sum(is.na(x)))
+  idx <- which(rows == dim(x3p$surface.matrix)[2])
+  if (idx[1] != 1) {
+    xmin <- 1 
+  } else xmin <- max(which(idx==1:length(idx))) +1
+  if (idx[length(idx)] != dim(x3p$surface.matrix)[1]) {
+    xmax <- dim(x3p$surface.matrix)[1]
+  } else xmax <- idx[min(which(idx==(dim(x3p$surface.matrix)[1] - rev(seq_along(idx))+1)))]-1
+  
+  cols <- apply(x3p$surface.matrix, MARGIN=2, FUN=function(x) sum(is.na(x)))
+  idx <- which(cols == dim(x3p$surface.matrix)[1])
+  
+  if (idx[1] != 1) {
+    ymin <- 1 
+  } else ymin <- max(which(idx==1:length(idx))) +1
+  if (idx[length(idx)] != dim(x3p$surface.matrix)[2]) {
+    ymax <- dim(x3p$surface.matrix)[2]
+  } else ymax <- idx[min(which(idx==(dim(x3p$surface.matrix)[2] - rev(seq_along(idx))+1)))]-1
+  
+  x3p %>% x3p_crop(x = xmin, y = dim(x3p$surface.matrix)[2]-ymax, width = xmax-xmin, height = ymax-ymin)
+}
+```
+
+
+
+```{r,eval=TRUE}
+future::plan(future::multisession(workers = future::availableCores() - 1))
+
+sensofarFilesGroup4 <- list.files("Sensofar/Group004_masked/",pattern = "*.x3p",full.names = TRUE)
+
+sensofarNamesGroup4 <- purrr::map_chr(sensofarFilesGroup4,
+                                      function(fileName){
+                                        paste0("group4_",str_extract(fileName,pattern = "P00[0-9]{1,2}"))
+                                      })
+
+future::plan(future::multisession(workers = future::availableCores() - 1))
+
+sensofarProcessedGroup4_masked <- furrr::future_pmap(.l = list(sensofarFilesGroup4),
+                                                     function(fileName){
+                                                       
+                                                       print(fileName)
+                                                       
+                                                       dat <- x3p_read(fileName)
+                                                       
+                                                       maskBackground <- toupper(dat$matrix.info$Mask$Background[[1]])
+                                                       
+                                                       if(all(str_length(unique(as.vector(dat$mask))) > 7) & any(str_detect(unique(as.vector(dat$mask)),"FF$"))){
+                                                         
+                                                         maskBackground <- paste0(maskBackground,"FF")
+                                                         
+                                                       }
+                                                       
+                                                       dat <- dat %>%
+                                                         x3p_delete(mask_vals = maskBackground) %>%
+                                                         preProcess_removeTrend(statistic = "quantile",
+                                                                                tau = .5,
+                                                                                method = "fn") %>%
+                                                         preProcess_gaussFilter() %>% 
+                                                         x3p_sample() %>% 
+                                                         preProcess_removeTrend(statistic = "quantile",
+                                                                                tau = .5,
+                                                                                method = "fn") %>%
+                                                         preProcess_gaussFilter() %>% 
+                                                         x3p_sample() %>%
+                                                         cmcR:::preProcess_cropWS()
+                                                       
+                                                       dat$mask <- NULL
+                                                       
+                                                       return(dat)
+                                                       
+                                                     }) %>%
+  set_names(sensofarNamesGroup4)
+
+x3pListPlot(sensofarProcessedGroup4_masked,
+            type = "list")
+```
+
+```{r,eval=TRUE}
+topMatchFilesGroup4 <- list.files("TopMatch/Group004_masked/",pattern = "*.x3p",full.names = TRUE)
+
+topMatchNamesGroup4 <- purrr::map_chr(topMatchFilesGroup4,
+                                      function(fileName){
+                                        paste0("group4_",str_extract(fileName,pattern = "K004[a-zA-z0-9]{3}"))
+                                      })
+
+topMatchProcessedGroup4_masked <- furrr::future_pmap(.l = list(topMatchFilesGroup4),
+                                                     function(fileName){
+                                                       
+                                                       print(fileName)
+                                                       
+                                                       dat <- x3p_read(fileName)
+                                                       
+                                                       maskBackground <- toupper(dat$matrix.info$Mask$Background[[1]])
+                                                       
+                                                       if(all(str_length(unique(as.vector(dat$mask))) > 7) & any(str_detect(unique(as.vector(dat$mask)),"FF$"))){
+                                                         
+                                                         maskBackground <- paste0(maskBackground,"FF")
+                                                         
+                                                       }
+                                                       
+                                                       dat <- dat %>%
+                                                         x3p_delete(mask_vals = maskBackground) %>%
+                                                         x3p_flip_x() %>%
+                                                         preProcess_removeTrend(statistic = "quantile",
+                                                                                tau = .5,
+                                                                                method = "fn") %>%
+                                                         preProcess_gaussFilter() %>% 
+                                                         x3p_sample() %>% 
+                                                         preProcess_removeTrend(statistic = "quantile",
+                                                                                tau = .5,
+                                                                                method = "fn") %>%
+                                                         preProcess_gaussFilter() %>% 
+                                                         x3p_sample() %>%
+                                                         cmcR:::preProcess_cropWS()
+                                                       
+                                                       dat$mask <- NULL
+                                                       
+                                                       return(dat)
+                                                       
+                                                     }) %>%
+  set_names(topMatchNamesGroup4)
+```
+
+```{r}
+x3pListPlot(topMatchProcessedGroup4_masked,
+            type = "list")
+```
+
+```{r,eval=TRUE}
+sensofarFilesGroup4 <- list.files("Sensofar/Group004_masked/",pattern = "*.x3p",full.names = TRUE)
+
+sensofarProcessedGroup4_masked_downSample <- purrr::map(sensofarFilesGroup4,
+                                                        function(fileName){
+                                                          
+                                                          print(fileName)
+                                                          
+                                                          dat <- x3p_read(fileName)
+                                                          
+                                                          maskBackground <- toupper(dat$matrix.info$Mask$Background[[1]])
+                                                          
+                                                          if(all(str_length(unique(as.vector(dat$mask))) > 7) & any(str_detect(unique(as.vector(dat$mask)),"FF$"))){
+                                                            
+                                                            maskBackground <- paste0(maskBackground,"FF")
+                                                            
+                                                          }
+                                                          
+                                                          # browser()
+                                                          
+                                                          dat <- dat %>%
+                                                            x3p_delete(mask_vals = maskBackground) %>%
+                                                            x3p_interpolate(resx = 1.8434e-06) %>%
+                                                            preProcess_removeTrend(statistic = "quantile",
+                                                                                   tau = .5,
+                                                                                   method = "fn") %>%
+                                                            preProcess_gaussFilter() %>% 
+                                                            x3p_sample() %>% 
+                                                            preProcess_removeTrend(statistic = "quantile",
+                                                                                   tau = .5,
+                                                                                   method = "fn") %>%
+                                                            preProcess_gaussFilter() %>% 
+                                                            x3p_sample() %>%
+                                                            x3p_trim_na()
+                                                          
+                                                          dat$mask <- NULL
+                                                          
+                                                          return(dat)
+                                                          
+                                                        }) %>%
+  set_names(sensofarNamesGroup4)
+
+x3pListPlot(sensofarProcessedGroup4_masked_downSample,
+            type = "list")
+```
+
+
+
+```{r}
+# future::plan(future::multisession(workers = future::availableCores() - 2))
+# future:::ClusterRegistry("stop")
+
+sensofarGroup4Comparisons_64Cells <- 
+  furrr::future_map(1:length(sensofarProcessedGroup4_masked),
+                    # purrr::map(1:length(sensofarProcessedGroup4_masked),
+                    function(refInd){
+                      # furrr::future_map(1:length(sensofarProcessedGroup4_masked),
+                      purrr::map(1:length(sensofarProcessedGroup4_masked),
+                                 function(targetInd){
+                                   
+                                   refName <- names(sensofarProcessedGroup4_masked[refInd])
+                                   targetName <- names(sensofarProcessedGroup4_masked[targetInd])
+                                   
+                                   print(paste0(refName," vs. ",targetName))
+                                   
+                                   ref <- sensofarProcessedGroup4_masked[[refInd]]
+                                   target <- sensofarProcessedGroup4_masked[[targetInd]]
+                                   
+                                   target <- preProcess_rotateScan(reference = ref,
+                                                                   target = target)
+                                   
+                                   # browser()
+                                   
+                                   refToTargetComparison <- #tryCatch({
+                                     map_dfr(seq(-30,30,by = 3),
+                                             function(theta){
+                                               ref %>%
+                                                 comparison_cellDivision(numCells = 64) %>%
+                                                 mutate(regionHeightValues = comparison_getTargetRegions(cellHeightValues = cellHeightValues,
+                                                                                                         target = target,
+                                                                                                         theta = theta),
+                                                        cellMissing = comparison_calcPropMissing(heightValues = cellHeightValues),
+                                                        regionMissing = comparison_calcPropMissing(heightValues = regionHeightValues)) %>%
+                                                 filter(cellMissing <= .85 & regionMissing <= .85) %>%
+                                                 mutate(cellHeightValues = comparison_standardizeHeights(heightValues = cellHeightValues),
+                                                        regionHeightValues = comparison_standardizeHeights(heightValues = regionHeightValues),
+                                                        cellHeightValues_replaced = comparison_replaceMissing(cellHeightValues),
+                                                        regionHeightValues_replaced = comparison_replaceMissing(regionHeightValues),
+                                                        fft_ccf = comparison_fft_ccf(cellHeightValues_replaced,
+                                                                                     regionHeightValues_replaced),
+                                                        pairwiseCompCor = comparison_cor(cellHeightValues,
+                                                                                         regionHeightValues,
+                                                                                         fft_ccf_df = fft_ccf)) %>%
+                                                 # ,imagerCor = comparison_fft_ccf(cellHeightValues_replaced,
+                                                 #                                regionHeightValues_replaced,
+                                                 #                                ccfMethod = "imager")) %>%
+                                                 unnest(fft_ccf) %>%
+                                                 select(-fft_ccf) %>%
+                                                 rename(x_fft = x,
+                                                        y_fft = y) %>%
+                                                 select(-c(cellHeightValues,regionHeightValues,cellHeightValues_replaced,regionHeightValues_replaced)) %>%
+                                                 # unnest(imagerCor) %>%
+                                                 # rename(cor_imager = fft_ccf,
+                                                 #        x_imager = x,
+                                                 #        y_imager = y) %>%
+                                                 mutate(theta = theta)
+                                               
+                                               # comparison_allTogether(reference = ref,
+                                               #                        target = target,
+                                               #                        theta = theta,
+                                               #                        numCells = 64)
+                                             })  %>%
+                                     mutate(direction = "refToTarget",
+                                            comparisonName = paste0(refName," vs. ",targetName))
+                                   # },
+                                   # error = function(e){
+                                   #   data.frame(cellIndex = NA,fft_ccf = NA,pairwiseCompCor = NA,
+                                   #              comparisonName = paste0(refName," vs. ",targetName),direction = "refToTarget")
+                                   # })
+                                   
+                                   targetToRefComparison <- #tryCatch(expr = {
+                                     map_dfr(seq(-30,30,by = 3),
+                                             function(theta){
+                                               target %>%
+                                                 comparison_cellDivision(numCells = 64) %>%
+                                                 mutate(regionHeightValues = comparison_getTargetRegions(cellHeightValues = cellHeightValues,
+                                                                                                         target = ref,
+                                                                                                         theta = theta),
+                                                        cellMissing = comparison_calcPropMissing(heightValues = cellHeightValues),
+                                                        regionMissing = comparison_calcPropMissing(heightValues = regionHeightValues)) %>%
+                                                 filter(cellMissing <= .85 & regionMissing <= .85) %>%
+                                                 mutate(cellHeightValues = comparison_standardizeHeights(heightValues = cellHeightValues),
+                                                        regionHeightValues = comparison_standardizeHeights(heightValues = regionHeightValues),
+                                                        cellHeightValues_replaced = comparison_replaceMissing(cellHeightValues),
+                                                        regionHeightValues_replaced = comparison_replaceMissing(regionHeightValues),
+                                                        fft_ccf = comparison_fft_ccf(cellHeightValues_replaced,
+                                                                                     regionHeightValues_replaced),
+                                                        pairwiseCompCor = comparison_cor(cellHeightValues,
+                                                                                         regionHeightValues,
+                                                                                         fft_ccf_df = fft_ccf)) %>%
+                                                 # ,imagerCor = comparison_fft_ccf(cellHeightValues_replaced,
+                                                 #                                regionHeightValues_replaced,
+                                                 #                                ccfMethod = "imager")
+                                                 # ) %>%
+                                                 unnest(fft_ccf) %>%
+                                                 select(-fft_ccf) %>%
+                                                 rename(x_fft = x,
+                                                        y_fft = y) %>%
+                                                 select(-c(cellHeightValues,regionHeightValues,cellHeightValues_replaced,regionHeightValues_replaced)) %>%
+                                                 # unnest(imagerCor) %>%
+                                                 # rename(cor_imager = fft_ccf,
+                                                 #        x_imager = x,
+                                                 #        y_imager = y) %>%
+                                                 mutate(theta = theta)
+                                             })  %>%
+                                     mutate(direction = "targetToRef",
+                                            comparisonName = paste0(refName," vs. ",targetName))
+                                   # },
+                                   # error = function(e){
+                                   #   data.frame(cellIndex = NA,fft_ccf = NA,pairwiseCompCor = NA,
+                                   #              comparisonName = paste0(refName," vs. ",targetName),direction = "targetToRef")
+                                   # })
+                                   
+                                   comparisonData <- bind_rows(refToTargetComparison,
+                                                               targetToRefComparison)
+                                   if(!any(is.na(comparisonData$cellIndex))){
+                                     
+                                     CMCs <- purrr::map_dfr(cross(.l = list("x" = seq(5,25,by = 5),
+                                                                            # "y" = seq(5,25,by = 5),
+                                                                            "corr" = seq(.3,.6,by = .05))),
+                                                            function(thresholds){
+                                                              
+                                                              comparisonData %>%
+                                                                group_by(comparisonName,
+                                                                         direction) %>%
+                                                                mutate(originalMethodClassif = decision_CMC(cellIndex = cellIndex,
+                                                                                                            x = x_fft,
+                                                                                                            y = y_fft,
+                                                                                                            theta = theta,
+                                                                                                            corr = pairwiseCompCor,
+                                                                                                            xThresh = thresholds$x,
+                                                                                                            yThresh = thresholds$x,
+                                                                                                            corrThresh = thresholds$corr,
+                                                                                                            thetaThresh = 6),
+                                                                       highCMCClassif = decision_CMC(cellIndex = cellIndex,
+                                                                                                     x = x_fft,
+                                                                                                     y = y_fft,
+                                                                                                     theta = theta,
+                                                                                                     corr = pairwiseCompCor,
+                                                                                                     xThresh = thresholds$x,
+                                                                                                     yThresh = thresholds$x,
+                                                                                                     corrThresh = thresholds$corr,
+                                                                                                     thetaThresh = 6,
+                                                                                                     tau = 1)) %>%
+                                                                # ,originalMethodClassif_imager = decision_CMC(cellIndex = cellIndex,
+                                                                #                                             x = x_imager,
+                                                                #                                             y = y_imager,
+                                                                #                                             theta = theta,
+                                                                #                                             corr = cor_imager,
+                                                                #                                             xThresh = thresholds$x,
+                                                                #                                             yThresh = thresholds$x,
+                                                                #                                             corrThresh = thresholds$corr,
+                                                                #                                             thetaThresh = 6),
+                                                                # highCMCClassif_imager = decision_CMC(cellIndex = cellIndex,
+                                                                #                                      x = x_imager,
+                                                              #                                      y = y_imager,
+                                                              #                                      theta = theta,
+                                                              #                                      corr = cor_imager,
+                                                              #                                      xThresh = thresholds$x,
+                                                              #                                      yThresh = thresholds$x,
+                                                              #                                      corrThresh = thresholds$corr,
+                                                              #                                      thetaThresh = 6,
+                                                              #                                      tau = 1)
+                                                              # ) %>%
+                                                              ungroup() %>%
+                                                                mutate(type = "match",
+                                                                       xThresh = thresholds$x,
+                                                                       yThresh = thresholds$x,
+                                                                       corrThresh = thresholds$corr,
+                                                                       thetaThresh = 6)
+                                                              
+                                                            })
+                                   }
+                                   else{
+                                     CMCs <- comparisonData %>%
+                                       mutate(originalMethodCount = NA,
+                                              highCMCCount = NA,
+                                              type = "match",
+                                              xThresh = NA,
+                                              yThresh = NA,
+                                              corrThresh = NA,
+                                              thetaThresh = NA)
+                                   }
+                                   
+                                   return(list("comparisonData" = comparisonData,
+                                               "CMCs" = CMCs))
+                                   
+                                 })
+                    })
+```
+
+```{r}
+# future::plan(future::multisession(workers = future::availableCores() - 2))
+
+topMatchGroup4Comparisons_64Cells <-
+  furrr::future_map(1:length(topMatchProcessedGroup4_masked),
+                    # purrr::map(1:length(topMatchProcessedGroup4_masked),
+                    function(refInd){
+                      # furrr::future_map(1:length(topMatchProcessedGroup4_masked),
+                      purrr::map(1:length(topMatchProcessedGroup4_masked),
+                                 function(targetInd){
+                                   
+                                   refName <- names(topMatchProcessedGroup4_masked[refInd])
+                                   targetName <- names(topMatchProcessedGroup4_masked[targetInd])
+                                   
+                                   print(paste0(refName," vs. ",targetName))
+                                   
+                                   ref <- topMatchProcessedGroup4_masked[[refInd]]
+                                   target <- topMatchProcessedGroup4_masked[[targetInd]]
+                                   
+                                   target <- preProcess_rotateScan(reference = ref,
+                                                                   target = target)
+                                   
+                                   refToTargetComparison <- #tryCatch({
+                                     map_dfr(seq(-30,30,by = 3),
+                                             function(theta){
+                                               ref %>%
+                                                 comparison_cellDivision(numCells = 64) %>%
+                                                 mutate(regionHeightValues = comparison_getTargetRegions(cellHeightValues = cellHeightValues,
+                                                                                                         target = target,
+                                                                                                         theta = theta),
+                                                        cellMissing = comparison_calcPropMissing(heightValues = cellHeightValues),
+                                                        regionMissing = comparison_calcPropMissing(heightValues = regionHeightValues)) %>%
+                                                 filter(cellMissing <= .85 & regionMissing <= .85) %>%
+                                                 mutate(cellHeightValues = comparison_standardizeHeights(heightValues = cellHeightValues),
+                                                        regionHeightValues = comparison_standardizeHeights(heightValues = regionHeightValues),
+                                                        cellHeightValues_replaced = comparison_replaceMissing(cellHeightValues),
+                                                        regionHeightValues_replaced = comparison_replaceMissing(regionHeightValues),
+                                                        fft_ccf = comparison_fft_ccf(cellHeightValues_replaced,
+                                                                                     regionHeightValues_replaced),
+                                                        pairwiseCompCor = comparison_cor(cellHeightValues,
+                                                                                         regionHeightValues,
+                                                                                         fft_ccf_df = fft_ccf)) %>%
+                                                 # ,imagerCor = comparison_fft_ccf(cellHeightValues_replaced,
+                                                 #                                regionHeightValues_replaced,
+                                                 #                                ccfMethod = "imager")
+                                                 # ) %>%
+                                                 unnest(fft_ccf) %>%
+                                                 select(-fft_ccf) %>%
+                                                 rename(x_fft = x,
+                                                        y_fft = y) %>%
+                                                 select(-c(cellHeightValues,regionHeightValues,cellHeightValues_replaced,regionHeightValues_replaced)) %>%
+                                                 # unnest(imagerCor) %>%
+                                                 # rename(cor_imager = fft_ccf,
+                                                 #        x_imager = x,
+                                                 #        y_imager = y) %>%
+                                                 mutate(theta = theta)
+                                               
+                                               # comparison_allTogether(reference = ref,
+                                               #                        target = target,
+                                               #                        theta = theta,
+                                               #                        numCells = 64)
+                                             })  %>%
+                                     mutate(direction = "refToTarget",
+                                            comparisonName = paste0(refName," vs. ",targetName))
+                                   # },
+                                   # error = function(e){
+                                   #   data.frame(cellIndex = NA,fft_ccf = NA,pairwiseCompCor = NA,
+                                   #              comparisonName = paste0(refName," vs. ",targetName),direction = "refToTarget")
+                                   # })
+                                   
+                                   targetToRefComparison <- #tryCatch(expr = {
+                                     map_dfr(seq(-30,30,by = 3),
+                                             function(theta){
+                                               target %>%
+                                                 comparison_cellDivision(numCells = 64) %>%
+                                                 mutate(regionHeightValues = comparison_getTargetRegions(cellHeightValues = cellHeightValues,
+                                                                                                         target = ref,
+                                                                                                         theta = theta),
+                                                        cellMissing = comparison_calcPropMissing(heightValues = cellHeightValues),
+                                                        regionMissing = comparison_calcPropMissing(heightValues = regionHeightValues)) %>%
+                                                 filter(cellMissing <= .85 & regionMissing <= .85) %>%
+                                                 mutate(cellHeightValues = comparison_standardizeHeights(heightValues = cellHeightValues),
+                                                        regionHeightValues = comparison_standardizeHeights(heightValues = regionHeightValues),
+                                                        cellHeightValues_replaced = comparison_replaceMissing(cellHeightValues),
+                                                        regionHeightValues_replaced = comparison_replaceMissing(regionHeightValues),
+                                                        fft_ccf = comparison_fft_ccf(cellHeightValues_replaced,
+                                                                                     regionHeightValues_replaced),
+                                                        pairwiseCompCor = comparison_cor(cellHeightValues,
+                                                                                         regionHeightValues,
+                                                                                         fft_ccf_df = fft_ccf)) %>%
+                                                 # ,imagerCor = comparison_fft_ccf(cellHeightValues_replaced,
+                                                 #                                regionHeightValues_replaced,
+                                                 #                                ccfMethod = "imager")
+                                                 # ) %>%
+                                                 unnest(fft_ccf) %>%
+                                                 select(-fft_ccf) %>%
+                                                 rename(x_fft = x,
+                                                        y_fft = y) %>%
+                                                 select(-c(cellHeightValues,regionHeightValues,cellHeightValues_replaced,regionHeightValues_replaced)) %>%
+                                                 # unnest(imagerCor) %>%
+                                                 # rename(cor_imager = fft_ccf,
+                                                 #        x_imager = x,
+                                                 #        y_imager = y) %>%
+                                                 mutate(theta = theta)
+                                             })  %>%
+                                     mutate(direction = "targetToRef",
+                                            comparisonName = paste0(refName," vs. ",targetName))
+                                   # },
+                                   # error = function(e){
+                                   #   data.frame(cellIndex = NA,fft_ccf = NA,pairwiseCompCor = NA,
+                                   #              comparisonName = paste0(refName," vs. ",targetName),direction = "targetToRef")
+                                   # })
+                                   
+                                   comparisonData <- bind_rows(refToTargetComparison,
+                                                               targetToRefComparison)
+                                   if(!any(is.na(comparisonData$cellIndex))){
+                                     
+                                     CMCs <- purrr::map_dfr(cross(.l = list("x" = seq(5,25,by = 5),
+                                                                            # "y" = seq(5,25,by = 5),
+                                                                            "corr" = seq(.3,.6,by = .05))),
+                                                            function(thresholds){
+                                                              
+                                                              comparisonData %>%
+                                                                group_by(comparisonName,
+                                                                         direction) %>%
+                                                                mutate(originalMethodClassif = decision_CMC(cellIndex = cellIndex,
+                                                                                                            x = x_fft,
+                                                                                                            y = y_fft,
+                                                                                                            theta = theta,
+                                                                                                            corr = pairwiseCompCor,
+                                                                                                            xThresh = thresholds$x,
+                                                                                                            yThresh = thresholds$x,
+                                                                                                            corrThresh = thresholds$corr,
+                                                                                                            thetaThresh = 6),
+                                                                       highCMCClassif = decision_CMC(cellIndex = cellIndex,
+                                                                                                     x = x_fft,
+                                                                                                     y = y_fft,
+                                                                                                     theta = theta,
+                                                                                                     corr = pairwiseCompCor,
+                                                                                                     xThresh = thresholds$x,
+                                                                                                     yThresh = thresholds$x,
+                                                                                                     corrThresh = thresholds$corr,
+                                                                                                     thetaThresh = 6,
+                                                                                                     tau = 1)) %>%
+                                                                # ,originalMethodClassif_imager = decision_CMC(cellIndex = cellIndex,
+                                                                #                                             x = x_imager,
+                                                                #                                             y = y_imager,
+                                                                #                                             theta = theta,
+                                                                #                                             corr = cor_imager,
+                                                                #                                             xThresh = thresholds$x,
+                                                                #                                             yThresh = thresholds$x,
+                                                                #                                             corrThresh = thresholds$corr,
+                                                                #                                             thetaThresh = 6),
+                                                                # highCMCClassif_imager = decision_CMC(cellIndex = cellIndex,
+                                                                #                                      x = x_imager,
+                                                              #                                      y = y_imager,
+                                                              #                                      theta = theta,
+                                                              #                                      corr = cor_imager,
+                                                              #                                      xThresh = thresholds$x,
+                                                              #                                      yThresh = thresholds$x,
+                                                              #                                      corrThresh = thresholds$corr,
+                                                              #                                      thetaThresh = 6,
+                                                              #                                      tau = 1)
+                                                              # ) %>%
+                                                              ungroup() %>%
+                                                                mutate(type = "match",
+                                                                       xThresh = thresholds$x,
+                                                                       yThresh = thresholds$x,
+                                                                       corrThresh = thresholds$corr,
+                                                                       thetaThresh = 6)
+                                                              
+                                                            })
+                                   }
+                                   else{
+                                     CMCs <- comparisonData %>%
+                                       mutate(originalMethodCount = NA,
+                                              highCMCCount = NA,
+                                              type = "match",
+                                              xThresh = NA,
+                                              yThresh = NA,
+                                              corrThresh = NA,
+                                              thetaThresh = NA)
+                                   }
+                                   
+                                   return(list("comparisonData" = comparisonData,
+                                               "CMCs" = CMCs))
+                                   
+                                 })
+                    })
+```
+
+
+```{r}
+# future::plan(future::multisession(workers = future::availableCores() - 2))
+
+crossGroup4Comparisons_64Cells <- 
+  furrr::future_map(1:length(sensofarProcessedGroup4_masked_downSample),
+                    # purrr::map(1:length(sensofarProcessedGroup4_masked_downSample),
+                    function(refInd){
+                      # furrr::future_map(1:length(topMatchProcessedGroup4_masked),
+                      purrr::map(1:length(topMatchProcessedGroup4_masked),
+                                 function(targetInd){
+                                   
+                                   refName <- names(sensofarProcessedGroup4_masked_downSample[refInd])
+                                   targetName <- names(topMatchProcessedGroup4_masked[targetInd])
+                                   
+                                   print(paste0(refName," vs. ",targetName))
+                                   
+                                   ref <- sensofarProcessedGroup4_masked_downSample[[refInd]]
+                                   target <- topMatchProcessedGroup4_masked[[targetInd]]
+                                   
+                                   target <- preProcess_rotateScan(reference = ref,
+                                                                   target = target)
+                                   
+                                   refToTargetComparison <- #tryCatch({
+                                     map_dfr(seq(-30,30,by = 3),
+                                             function(theta){
+                                               ref %>%
+                                                 comparison_cellDivision(numCells = 64) %>%
+                                                 mutate(regionHeightValues = comparison_getTargetRegions(cellHeightValues = cellHeightValues,
+                                                                                                         target = target,
+                                                                                                         theta = theta),
+                                                        cellMissing = comparison_calcPropMissing(heightValues = cellHeightValues),
+                                                        regionMissing = comparison_calcPropMissing(heightValues = regionHeightValues)) %>%
+                                                 filter(cellMissing <= .85 & regionMissing <= .85) %>%
+                                                 mutate(cellHeightValues = comparison_standardizeHeights(heightValues = cellHeightValues),
+                                                        regionHeightValues = comparison_standardizeHeights(heightValues = regionHeightValues),
+                                                        cellHeightValues_replaced = comparison_replaceMissing(cellHeightValues),
+                                                        regionHeightValues_replaced = comparison_replaceMissing(regionHeightValues),
+                                                        fft_ccf = comparison_fft_ccf(cellHeightValues_replaced,
+                                                                                     regionHeightValues_replaced),
+                                                        pairwiseCompCor = comparison_cor(cellHeightValues,
+                                                                                         regionHeightValues,
+                                                                                         fft_ccf_df = fft_ccf)) %>%
+                                                 # ,imagerCor = comparison_fft_ccf(cellHeightValues_replaced,
+                                                 #                                regionHeightValues_replaced,
+                                                 #                                ccfMethod = "imager")
+                                                 # ) %>%
+                                                 unnest(fft_ccf) %>%
+                                                 select(-fft_ccf) %>%
+                                                 rename(x_fft = x,
+                                                        y_fft = y) %>%
+                                                 select(-c(cellHeightValues,regionHeightValues,cellHeightValues_replaced,regionHeightValues_replaced)) %>%
+                                                 # unnest(imagerCor) %>%
+                                                 # rename(cor_imager = fft_ccf,
+                                                 #        x_imager = x,
+                                                 #        y_imager = y) %>%
+                                                 mutate(theta = theta)
+                                               
+                                               # comparison_allTogether(reference = ref,
+                                               #                        target = target,
+                                               #                        theta = theta,
+                                               #                        numCells = 64)
+                                             })  %>%
+                                     mutate(direction = "refToTarget",
+                                            comparisonName = paste0(refName," vs. ",targetName))
+                                   # },
+                                   # error = function(e){
+                                   #   data.frame(cellIndex = NA,fft_ccf = NA,pairwiseCompCor = NA,
+                                   #              comparisonName = paste0(refName," vs. ",targetName),direction = "refToTarget")
+                                   # })
+                                   
+                                   targetToRefComparison <- #tryCatch(expr = {
+                                     map_dfr(seq(-30,30,by = 3),
+                                             function(theta){
+                                               target %>%
+                                                 comparison_cellDivision(numCells = 64) %>%
+                                                 mutate(regionHeightValues = comparison_getTargetRegions(cellHeightValues = cellHeightValues,
+                                                                                                         target = ref,
+                                                                                                         theta = theta),
+                                                        cellMissing = comparison_calcPropMissing(heightValues = cellHeightValues),
+                                                        regionMissing = comparison_calcPropMissing(heightValues = regionHeightValues)) %>%
+                                                 filter(cellMissing <= .85 & regionMissing <= .85) %>%
+                                                 mutate(cellHeightValues = comparison_standardizeHeights(heightValues = cellHeightValues),
+                                                        regionHeightValues = comparison_standardizeHeights(heightValues = regionHeightValues),
+                                                        cellHeightValues_replaced = comparison_replaceMissing(cellHeightValues),
+                                                        regionHeightValues_replaced = comparison_replaceMissing(regionHeightValues),
+                                                        fft_ccf = comparison_fft_ccf(cellHeightValues_replaced,
+                                                                                     regionHeightValues_replaced),
+                                                        pairwiseCompCor = comparison_cor(cellHeightValues,
+                                                                                         regionHeightValues,
+                                                                                         fft_ccf_df = fft_ccf)) %>%
+                                                 # ,imagerCor = comparison_fft_ccf(cellHeightValues_replaced,
+                                                 #                                regionHeightValues_replaced,
+                                                 #                                ccfMethod = "imager")
+                                                 # ) %>%
+                                                 unnest(fft_ccf) %>%
+                                                 select(-fft_ccf) %>%
+                                                 rename(x_fft = x,
+                                                        y_fft = y) %>%
+                                                 select(-c(cellHeightValues,regionHeightValues,cellHeightValues_replaced,regionHeightValues_replaced)) %>%
+                                                 # unnest(imagerCor) %>%
+                                                 # rename(cor_imager = fft_ccf,
+                                                 #        x_imager = x,
+                                                 #        y_imager = y) %>%
+                                                 mutate(theta = theta)
+                                             })  %>%
+                                     mutate(direction = "targetToRef",
+                                            comparisonName = paste0(refName," vs. ",targetName))
+                                   # },
+                                   # error = function(e){
+                                   #   data.frame(cellIndex = NA,fft_ccf = NA,pairwiseCompCor = NA,
+                                   #              comparisonName = paste0(refName," vs. ",targetName),direction = "targetToRef")
+                                   # })
+                                   
+                                   comparisonData <- bind_rows(refToTargetComparison,
+                                                               targetToRefComparison)
+                                   if(!any(is.na(comparisonData$cellIndex))){
+                                     
+                                     CMCs <- purrr::map_dfr(cross(.l = list("x" = seq(5,25,by = 5),
+                                                                            # "y" = seq(5,25,by = 5),
+                                                                            "corr" = seq(.3,.6,by = .05))),
+                                                            function(thresholds){
+                                                              
+                                                              comparisonData %>%
+                                                                group_by(comparisonName,
+                                                                         direction) %>%
+                                                                mutate(originalMethodClassif = decision_CMC(cellIndex = cellIndex,
+                                                                                                            x = x_fft,
+                                                                                                            y = y_fft,
+                                                                                                            theta = theta,
+                                                                                                            corr = pairwiseCompCor,
+                                                                                                            xThresh = thresholds$x,
+                                                                                                            yThresh = thresholds$x,
+                                                                                                            corrThresh = thresholds$corr,
+                                                                                                            thetaThresh = 6),
+                                                                       highCMCClassif = decision_CMC(cellIndex = cellIndex,
+                                                                                                     x = x_fft,
+                                                                                                     y = y_fft,
+                                                                                                     theta = theta,
+                                                                                                     corr = pairwiseCompCor,
+                                                                                                     xThresh = thresholds$x,
+                                                                                                     yThresh = thresholds$x,
+                                                                                                     corrThresh = thresholds$corr,
+                                                                                                     thetaThresh = 6,
+                                                                                                     tau = 1)) %>%
+                                                                # ,originalMethodClassif_imager = decision_CMC(cellIndex = cellIndex,
+                                                                #                                             x = x_imager,
+                                                                #                                             y = y_imager,
+                                                                #                                             theta = theta,
+                                                                #                                             corr = cor_imager,
+                                                                #                                             xThresh = thresholds$x,
+                                                                #                                             yThresh = thresholds$x,
+                                                                #                                             corrThresh = thresholds$corr,
+                                                                #                                             thetaThresh = 6),
+                                                                # highCMCClassif_imager = decision_CMC(cellIndex = cellIndex,
+                                                                #                                      x = x_imager,
+                                                              #                                      y = y_imager,
+                                                              #                                      theta = theta,
+                                                              #                                      corr = cor_imager,
+                                                              #                                      xThresh = thresholds$x,
+                                                              #                                      yThresh = thresholds$x,
+                                                              #                                      corrThresh = thresholds$corr,
+                                                              #                                      thetaThresh = 6,
+                                                              #                                      tau = 1)
+                                                              # ) %>%
+                                                              ungroup() %>%
+                                                                mutate(type = "match",
+                                                                       xThresh = thresholds$x,
+                                                                       yThresh = thresholds$x,
+                                                                       corrThresh = thresholds$corr,
+                                                                       thetaThresh = 6)
+                                                              
+                                                            })
+                                   }
+                                   else{
+                                     CMCs <- comparisonData %>%
+                                       mutate(originalMethodCount = NA,
+                                              highCMCCount = NA,
+                                              type = "match",
+                                              xThresh = NA,
+                                              yThresh = NA,
+                                              corrThresh = NA,
+                                              thetaThresh = NA)
+                                   }
+                                   
+                                   return(list("comparisonData" = comparisonData,
+                                               "CMCs" = CMCs))
+                                   
+                                 })
+                    })
+```
+
+
+```{r}
+future::plan(future::multisession(workers = future::availableCores() - 1))
+
+allCMCs <- bind_rows(sensofarGroup4Comparisons_64Cells %>%
+                       furrr::future_map_dfr(function(dat1){
+                         
+                         purrr::map_dfr(dat1,
+                                        ~ {
+                                          
+                                          cmcs <- .$CMCs
+                                          
+                                          tmp <- cmcs %>%
+                                            group_by(xThresh,corrThresh,thetaThresh) %>%
+                                            group_split() %>%
+                                            map_dfr(~ {
+                                              
+                                              dat <- cmcR::decision_combineDirections(filter(.,direction == "refToTarget"),
+                                                                                      filter(.,direction == "targetToRef"))
+                                              
+                                              tmp <- data.frame(comparisonName = unique(.$comparisonName),
+                                                                xThresh = unique(.$xThresh),
+                                                                corrThresh = unique(.$corrThresh),
+                                                                thetaThresh = unique(.$thetaThresh)) %>%
+                                                mutate(originalMethodCount_refToTarget = nrow(dat$originalMethodCMCs[[1]]),
+                                                       originalMethodCount_targetToRef = nrow(dat$originalMethodCMCs[[2]]),
+                                                       highCMCCount = nrow(dat$highCMCs))
+                                              
+                                              tmp
+                                            })
+                                          
+                                          tmp
+                                          
+                                        })
+                         
+                       }) %>%
+                       tidyr::separate(col = comparisonName,into = c("ref","target"),sep = " vs. ",remove = FALSE) %>%
+                       mutate(highCMCCount = ifelse(ref == target,highCMCCount/2,highCMCCount)),
+                     topMatchGroup4Comparisons_64Cells %>%
+                       furrr::future_map_dfr(function(dat1){
+                         
+                         purrr::map_dfr(dat1,
+                                        ~ {
+                                          
+                                          cmcs <- .$CMCs
+                                          
+                                          tmp <- cmcs %>%
+                                            group_by(xThresh,corrThresh,thetaThresh) %>%
+                                            group_split() %>%
+                                            map_dfr(~ {
+                                              
+                                              dat <- cmcR::decision_combineDirections(filter(.,direction == "refToTarget"),
+                                                                                      filter(.,direction == "targetToRef"))
+                                              
+                                              tmp <- data.frame(comparisonName = unique(.$comparisonName),
+                                                                xThresh = unique(.$xThresh),
+                                                                corrThresh = unique(.$corrThresh),
+                                                                thetaThresh = unique(.$thetaThresh)) %>%
+                                                mutate(originalMethodCount_refToTarget = nrow(dat$originalMethodCMCs[[1]]),
+                                                       originalMethodCount_targetToRef = nrow(dat$originalMethodCMCs[[2]]),
+                                                       highCMCCount = nrow(dat$highCMCs))
+                                              
+                                              tmp
+                                            })
+                                          
+                                          tmp
+                                          
+                                        })
+                         
+                       }) %>%
+                       tidyr::separate(col = comparisonName,into = c("ref","target"),sep = " vs. ",remove = FALSE) %>%
+                       mutate(highCMCCount = ifelse(ref == target,highCMCCount/2,highCMCCount)),
+                     crossGroup4Comparisons_64Cells %>%
+                       furrr::future_map_dfr(function(dat1){
+                         
+                         purrr::map_dfr(dat1,
+                                        ~ {
+                                          
+                                          cmcs <- .$CMCs
+                                          
+                                          tmp <- cmcs %>%
+                                            group_by(xThresh,corrThresh,thetaThresh) %>%
+                                            group_split() %>%
+                                            map_dfr(~ {
+                                              
+                                              dat <- cmcR::decision_combineDirections(filter(.,direction == "refToTarget"),
+                                                                                      filter(.,direction == "targetToRef"))
+                                              
+                                              tmp <- data.frame(comparisonName = unique(.$comparisonName),
+                                                                xThresh = unique(.$xThresh),
+                                                                corrThresh = unique(.$corrThresh),
+                                                                thetaThresh = unique(.$thetaThresh)) %>%
+                                                mutate(originalMethodCount_refToTarget = nrow(dat$originalMethodCMCs[[1]]),
+                                                       originalMethodCount_targetToRef = nrow(dat$originalMethodCMCs[[2]]),
+                                                       highCMCCount = nrow(dat$highCMCs))
+                                              
+                                              tmp
+                                            })
+                                          
+                                          tmp
+                                          
+                                        })
+                         
+                       }) %>%
+                       tidyr::separate(col = comparisonName,into = c("ref","target"),sep = " vs. ",remove = FALSE) %>%
+                       mutate(highCMCCount = ifelse(ref == target,highCMCCount/2,highCMCCount)))
+```
+
+```{r}
+allCMCs %>%
+  mutate(highCMCCount = ifelse(ref == target,highCMCCount*2,highCMCCount)) %>%
+  # pivot_longer(cols = c(originalMethodCount_refToTarget,originalMethodCount_targetToRef),
+  # names_to = "direction",values_to = "OriginalMethodCount") %>%
+  group_by(xThresh,corrThresh,thetaThresh) %>%
+  group_split() %>%
+  map(~ {
+    
+    ggplot(data = .,aes(x = ref,y = target)) +
+      geom_tile(aes(fill = highCMCCount,
+                    # ,colour = classification
+      ),
+      colour = "white",
+      size = .02) +
+      geom_text(aes(label = highCMCCount),size = 2.5) +
+      theme_bw() +
+      theme(panel.grid.major = element_blank(),
+            axis.text = element_text(size = 7),
+            axis.text.x = element_text(angle = 90,vjust = .5,hjust = 1)) +
+      coord_fixed(expand = FALSE) +
+      scale_color_manual(values = c("black","white")) +
+      scale_fill_gradient2(low = "grey50",
+                           mid = "white",
+                           high = "orange",
+                           midpoint = 3) +
+      ggtitle(paste0("Trans. Thresh. = ",unique(.$xThresh),", Corr. Thresh. = ",unique(.$corrThresh)))
+    
+  })
+```
+
+```{r}
+matchDictionary <-
+  data.frame(scan = unique(allCMCs$ref)) %>%
+  mutate(group = c(1,1,1,2,2,2,3,3,3,4,4,4,5,5,5, #sensofar groupings
+                   5,5,5,2,2,2,4,4,4,1,1,1,3,3,3)) #topmatch groupings
+```
+
+
+```{r}
+bind_rows(allCMCs %>%
+            mutate(preprocess = "not aligned")
+          # ,allCMCs_rotationPreAlign %>%
+          #   mutate(preprocess = "pre-aligned")
+) %>%
+  pivot_longer(cols = c(originalMethodCount_refToTarget,
+                        originalMethodCount_targetToRef),
+               names_to = "direction",
+               values_to = "originalMethodCount") %>%
+  mutate(direction = ifelse(direction == "originalMethodCount_refToTarget","refToTarget","targetToRef")) %>%
+  mutate(referenceNew = ifelse(direction == "targetToRef",target,ref),
+         targetNew = ifelse(direction == "targetToRef",ref,target)) %>%
+  select(-c(ref,target)) %>%
+  rename(reference = referenceNew,
+         target = targetNew) %>%
+  left_join(matchDictionary,
+            by = c("reference" = "scan")) %>%
+  rename(referenceGroup = group) %>%
+  left_join(matchDictionary,
+            by = c("target" = "scan")) %>%
+  rename(targetGroup = group) %>%
+  mutate(type = ifelse(referenceGroup == targetGroup,"match","non-match"))  %>%
+  #values calculated above are incorrectly divided by 2
+  mutate(highCMCCount = ifelse(reference == target & preprocess == "pre-aligned",2*highCMCCount,highCMCCount)) %>%
+  pivot_longer(cols = c(highCMCCount,originalMethodCount),
+               names_to = "method",
+               values_to = "count") %>%
+  mutate(method = ifelse(method == "highCMCCount","highCMC","originalMethod")) %>%
+  pivot_wider(names_from = preprocess,values_from = count) %>%
+  # pivot_wider(names_from = preprocess,
+  # values_from = highCMCCount)  %>%
+  group_by(xThresh,corrThresh,thetaThresh) %>%
+  group_split() %>%
+  map(~ {
+    
+    ggplot(data = .,
+           aes(x = `not aligned`,
+               y = `pre-aligned`)) +
+      geom_point() +
+      facet_wrap(method ~ type) +
+      theme_bw() +
+      coord_fixed() +
+      ggtitle(paste0("Trans. Thresh. = ",unique(.$xThresh),", Corr. Thresh. = ",unique(.$corrThresh))) +
+      theme(title = element_text(size = 8)) +
+      xlab("Not Rotationally Aligned CMCs") +
+      ylab("Rotationally Aligned CMCs") +
+      geom_abline()
+  })
+```
+
+```{r}
+decision_combineDirections(reference_v_target_CMCs = sensofarGroup4Comparisons_64Cells[[1]][[3]]$CMCs %>%
+                             filter(xThresh == 20 & corrThresh == .45 & direction == "refToTarget"),
+                           target_v_reference_CMCs = sensofarGroup4Comparisons_64Cells[[1]][[3]]$CMCs %>%
+                             filter(xThresh == 20 & corrThresh == .45 & direction == "targetToRef"))
+
+decision_combineDirections(reference_v_target_CMCs = sensofarGroup4Comparisons_64Cells[[3]][[1]]$CMCs %>%
+                             filter(xThresh == 20 & corrThresh == .45 & direction == "refToTarget"),
+                           target_v_reference_CMCs = sensofarGroup4Comparisons_64Cells[[3]][[1]]$CMCs %>%
+                             filter(xThresh == 20 & corrThresh == .45 & direction == "targetToRef"))
+```
+
+```{r}
+sensofarGroup4Comparisons_64Cells[[1]][[3]]$comparisonData %>%
+  rename(x = x_fft,
+         y = y_fft) %>%
+  dplyr::group_by(theta,direction) %>%
+  dplyr::mutate(cmcThetaDistribClassif = ifelse(abs(x - median(x)) <= 20 &
+                                                  abs(y - median(y)) <= 20 &
+                                                  pairwiseCompCor >= .45,
+                                                "CMC Candidate","not CMC Candidate")) %>%
+  dplyr::ungroup() %>%
+  dplyr::filter(cmcThetaDistribClassif == "CMC Candidate") %>%
+  ggplot2::ggplot(ggplot2::aes(x = theta)) +
+  ggplot2::geom_bar(stat = "count") +
+  facet_wrap(~ direction)
+
+sensofarGroup4Comparisons_64Cells[[3]][[1]]$comparisonData %>%
+  rename(x = x_fft,
+         y = y_fft) %>%
+  dplyr::group_by(theta,direction) %>%
+  dplyr::mutate(cmcThetaDistribClassif = ifelse(abs(x - median(x)) <= 20 &
+                                                  abs(y - median(y)) <= 20 &
+                                                  pairwiseCompCor >= .45,
+                                                "CMC Candidate","not CMC Candidate")) %>%
+  dplyr::ungroup() %>%
+  dplyr::filter(cmcThetaDistribClassif == "CMC Candidate") %>%
+  ggplot2::ggplot(ggplot2::aes(x = theta)) +
+  ggplot2::geom_bar(stat = "count")+
+  facet_wrap(~ direction)
+```
+
+
+```{r}
+sensofarGroup4Comparisons_64Cells[[1]][[3]]$comparisonData %>%
+  # filter(theta >= -6 & theta <= 6) %>%
+  filter(theta == 0) %>%
+  mutate(theta = factor(theta)) %>%
+  group_by(theta) %>%
+  mutate(translatePrecision = 1/var(c(x_fft,y_fft))) %>%
+  rename(x=x_fft,
+         y = y_fft) %>%
+  mutate(x = (x - mean(x))/sd(x),
+         y = (y - mean(y))/sd(y)) %>%
+  ggplot(aes(x=x,y=y)) +
+  geom_point() +
+  coord_fixed() +
+  theme_bw() +
+  facet_wrap(~ direction)
+```
+
+
+```{r}
+sensofarGroup4Comparisons_64Cells[[1]][[3]]$comparisonData %>%
+  filter(theta == 0) %>%
+  select(x_fft,y_fft) %>%
+  rename(x=x_fft,
+         y = y_fft) %>%
+  # mutate(x = (x - mean(x))/sd(x),
+  #        y = (y - mean(y))/sd(y)) %>%
+  mutate(obsNum = 1:nrow(.)) %>%
+  mutate(classif = )
+```
+
+
+```{r}
+allCMCs %>%
+  filter((ref == "group4_P0001" & target == "group4_P0002") | (ref == "group4_P0002" & target == "group4_P0001")) %>%
+  group_by(xThresh,corrThresh,thetaThresh) %>%
+  group_split() %>%
+  map(~ {
+    
+    ggplot(aes(x = ref,y=target,fill=highCMCCount)) +
+      geom_
+    
+  })
+```
+
+
+
+```{r}
+dat <- preProcess_rotateScan(reference = sensofarProcessedGroup4_masked[[4]],
+                             target = sensofarProcessedGroup4_masked[[6]])
+
+dat1 <- preProcess_rotateScan(reference = sensofarProcessedGroup4_masked[[6]],
+                              target = sensofarProcessedGroup4_masked[[4]])
+
+
+x3pListPlot(list(sensofarProcessedGroup4_masked[[4]],
+                 dat,
+                 sensofarProcessedGroup4_masked[[6]]))
+
+x3pListPlot(list(sensofarProcessedGroup4_masked[[6]],
+                 dat1,
+                 sensofarProcessedGroup4_masked[[4]]))
+
+```
+
+
+```{r,eval=FALSE}
+decision_convergence <- function(cellIndex,
+                                 x,
+                                 y,
+                                 theta,
+                                 corr,
+                                 direction,
+                                 translationThresh = 25,
+                                 thetaThresh = 3,
+                                 corrThresh = .4){
+  
+  comparisonFeaturesDF <- data.frame(cellIndex = cellIndex,
+                                     x = x,
+                                     y = y,
+                                     theta = theta,
+                                     corr = corr,
+                                     direction = direction)
+  
+  convergenceIndicators <- comparisonFeaturesDF %>%
+    dplyr::group_by(theta,direction) %>%
+    dplyr::mutate(distanceToMed = sqrt((x - median(x))^2 + (y - median(y))^2)) %>%
+    dplyr::summarise(distanceToMed = median(distanceToMed)) %>%
+    dplyr::ungroup() %>%
+    dplyr::group_by(direction) %>%
+    dplyr::group_split() %>%
+    purrr::map_dfr(~ {
+      data.frame(direction = unique(.$direction),
+                 theta = unique(.$theta[which(.$distanceToMed == min(.$distanceToMed))]),
+                 distanceToMed = min(.$distanceToMed))
+    }) 
+  
+  thetaDistanceInd <- convergenceIndicators %>%
+    dplyr::pull(theta) %>%
+    abs() %>%
+    diff() %>%
+    abs() %>%
+    magrittr::is_weakly_less_than(thetaThresh)
+  
+  distanceToMedInd <- convergenceIndicators %>%
+    dplyr::pull(distanceToMed) %>%
+    magrittr::is_weakly_less_than(translationThresh)
+  
+  convergenceInd <- thetaDistanceInd & all(distanceToMedInd)
+  
+  if(!convergenceInd){
+    return("non-CMC (failed)")
+  }
+  
+  thetaRefs <- comparisonFeaturesDF %>%
+    group_by(cellIndex,direction) %>%
+    filter(corr == max(corr)) %>%
+    ungroup() %>%
+    group_by(direction) %>%
+    summarise(thetaRef = median(theta))
+  
+  
+  convergenceCMCs <- comparisonFeaturesDF %>%
+    left_join(thetaRefs,
+              by = c("direction")) %>%
+    group_by(direction)  %>%
+    filter(theta >= thetaRef - thetaThresh & theta <= thetaRef + thetaThresh &
+             abs(x - median(x)) <= translationThresh &
+             abs(y - median(y)) <= translationThresh) %>%
+    filter(corr >= corrThresh) %>%
+    ungroup() %>%
+    group_by(direction,cellIndex) %>%
+    filter(corr == max(corr)) %>%
+    mutate(convergenceCMCClassif = "CMC")
+  
+  comparisonFeaturesDF %>%
+    left_join(convergenceCMCs,
+              by = c("cellIndex","x","y","corr","theta","direction")) %>%
+    mutate(convergenceCMCClassif = ifelse(is.na(convergenceCMCClassif),"non-CMC",convergenceCMCClassif)) %>%
+    pull(convergenceCMCClassif) %>%
+    return()
+}
+```
