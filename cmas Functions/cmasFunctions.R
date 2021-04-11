@@ -606,26 +606,28 @@ imagerCCF <- function(reference,
   }
 }
 
-calcVarianceRatio <- function(cmcData){
-  grand_cmcCountAverage <- mean(cmcData$cmcCount)
+calcVarianceRatio <- function(cmcData,similarityCol = "cmcCount"){
+  grand_similarityColAverage <- mean(unlist(cmcData[,similarityCol]))
 
-  withinGroup_cmcCount <- cmcData %>%
+  withinGroup_similarityCol <- cmcData %>%
     group_by(type) %>%
-    summarise(cmcCountAverage = mean(cmcCount),
-              cmcCountVar = var(cmcCount),
+    summarise(similarityColAverage = mean(!!as.name(similarityCol)),
+              similarityColVar = var(!!as.name(similarityCol)),
               .groups = "drop")
 
-  betweenGroupVariability <- withinGroup_cmcCount %>%
-    mutate(cmcCountSS = (cmcCountAverage - grand_cmcCountAverage)^2) %>%
-    pull(cmcCountSS) %>%
+  betweenGroupVariability <- withinGroup_similarityCol %>%
+    mutate(similarityColSS = (similarityColAverage - grand_similarityColAverage)^2) %>%
+    pull(similarityColSS) %>%
     sum()
 
-  withinGroupVariability <- withinGroup_cmcCount %>%
-    pull(cmcCountVar) %>%
+  withinGroupVariability <- withinGroup_similarityCol %>%
+    pull(similarityColVar) %>%
     sum()
 
   cmcData <- cmcData %>%
     mutate(varRatio = betweenGroupVariability/withinGroupVariability)
+
+  return(cmcData)
 }
 
 calcAUC <- function(cmcData){
@@ -867,13 +869,17 @@ estimatedRotationApp <- function(reference,
                      checkboxInput("overlayCheck","Overlay Scans",value = TRUE),
                      numericInput("plotWidth",label = "Plot Width (px)",min = 1,value = 1000),
                      radioButtons("rotationEstimation","Rotate target scan by angle estimated via:",
-                                  choices = c("Nothing (show scans as-is)" = 1,
-                                              "Polar Transformation" = 2)),
+                                  choices = c("Polar Transformation" = 2,
+                                              "Custom" = 1),
+                                  selected = 1),
+                     conditionalPanel("input.rotationEstimation == '1'",
+                                      inputPanel(numericInput(inputId = "customAngle",
+                                                              label = "Custom Angle (deg):",
+                                                              value = 0,min = -180,max = 180))),
                      numericInput("corrThresh","Correlation Threshold",value = .5,min = 0,max = 1),
                      numericInput("translationThresh","Translation Threshold",value = 20,min = 0)),
         mainPanel(width = 10,
-                  fluidRow(column(6,plotOutput("overlayPlot")),
-                           column(6,plotOutput("differencePlot"))),
+                  fluidRow(column(6,plotOutput("overlayPlot"))),
                   br(),
                   br(),
                   br(),
@@ -881,7 +887,9 @@ estimatedRotationApp <- function(reference,
                   br(),
                   br(),
                   br(),
-                  fluidRow(tableOutput("estimatedRotations")))
+                  fluidRow(column(6,tableOutput("estimatedRotations"))
+                           # ,column(6,plotOutput("differencePlot"))
+                           ))
       )
     ),
     server = function(input, output) {
@@ -897,10 +905,11 @@ estimatedRotationApp <- function(reference,
       if(!is.null(reference_v_target_comparison)){
 
         updateRadioButtons(inputId = "rotationEstimation",
-                           choices = c("Nothing (show scans as-is)" = 1,
-                                       "Polar Transformation" = 2,
+                           choices = c("Polar Transformation" = 2,
                                        "Original Method" = 3,
-                                       "High CMC Method" = 4))
+                                       "High CMC Method" = 4,
+                                       "Custom" = 1),
+                           selected = 1)
 
         toListen <- reactive({
           list(input$translationThresh,input$corrThresh)
@@ -944,25 +953,29 @@ estimatedRotationApp <- function(reference,
 
       makeReactiveBinding("targetRotated")
       makeReactiveBinding("difference")
+# browser()
+      toListen1 <- reactive({
+        list(input$rotationEstimation,input$customAngle)
+      })
 
-      observeEvent(input$rotationEstimation,
+      observeEvent(toListen1(),
                    {
 
-                     if(input$rotationEstimation == 1){
-
-                       targetRotated <<- target
-
-                     }
-                     else{
+                     # if(input$rotationEstimation == 1){
+                     #
+                     #   targetRotated <<- target
+                     #
+                     # }
+                     # else{
 
                        target_rotated <- target
                        target_rotated$surface.matrix <- target_rotated$surface.matrix*1e5 + 1
-
+# browser()
                        target_rotated$surface.matrix <- target_rotated$surface.matrix %>%
                          imager::as.cimg() %>%
                          imager::imrotate(cx = nrow(.)/2,
                                           cy = ncol(.)/2,
-                                          angle = c(polarRotation,originalMethodRotation,highCMCRotation)[as.numeric(input$rotationEstimation) - 1],
+                                          angle = c(input$customAngle,polarRotation,originalMethodRotation,highCMCRotation)[as.numeric(input$rotationEstimation)],
                                           interpolation = 0) %>%
                          as.matrix()
 
@@ -976,15 +989,17 @@ estimatedRotationApp <- function(reference,
 
                        #update difference scan (in the form of a data frame) too
                        difference <<- bind_rows(reference %>%
-                                                x3pToDF() %>%
-                                                mutate(x3pName = "reference"),
-                                              targetRotated %>%
-                                                x3pToDF() %>%
-                                                mutate(x3pName = "target"))  %>%
-                         pivot_wider(id_cols = c(x,y,x3pName),names_from = x3pName,values_from = value)  %>%
+                                                  x3pToDF() %>%
+                                                  mutate(x3pName = "reference"),
+                                                targetRotated %>%
+                                                  x3pToDF() %>%
+                                                  mutate(x3pName = "target"))  %>%
+                         pivot_wider(id_cols = c(x,y,x3pName),
+                                     names_from = x3pName,
+                                     values_from = value)  %>%
                          mutate("Overlap.Difference" = reference - target)
 
-                     }
+                     # }
 
 
 
@@ -1000,96 +1015,30 @@ estimatedRotationApp <- function(reference,
 
             if(prod(dim(reference$surface.matrix)) > prod(dim(targetRotated$surface.matrix))){
 
-              plt <- ggplot2::ggplot() +
-                ggplot2::geom_raster(data = reference %>%
-                                       x3pToDF() %>%
-                                       dplyr::mutate(x3pName = "reference") %>%
-                                       filter(!is.na(value)),
-                                     ggplot2::aes(x = x,y = y,fill = value),
-                                     alpha = input$referenceAlpha) +
-                ggplot2::scale_fill_gradientn(colours = rev(c('#7f3b08','#b35806','#e08214','#fdb863','#fee0b6','#f7f7f7',
-                                                              '#d8daeb','#b2abd2','#8073ac','#542788','#2d004b')),
-                                              values = scales::rescale(quantile(as.vector(reference$surface.matrix),
-                                                                                c(0,.01,.025,.1,.25,.5,.75,0.9,.975,.99,1),
+              pltDat <- reference %>%
+                x3pToDF() %>%
+                dplyr::mutate(x3pName = "reference") %>%
+                filter(!is.na(value)) %>%
+                mutate(value = abs(value - median(value)))
+
+              pltDat1 <- targetRotated %>%
+                x3pToDF() %>%
+                dplyr::mutate(x3pName = "targetRotated") %>%
+                filter(!is.na(value)) %>%
+                mutate(value = abs(value - median(value)))
+
+              plt <- ggplot() +
+                geom_raster(data = pltDat,
+                            aes(x=x,y=y,fill = value),
+                            alpha = input$referenceAlpha) +
+                ggplot2::scale_fill_gradientn(colours = c('#fff7fb','#ece7f2','#d0d1e6','#a6bddb','#74a9cf','#3690c0','#0570b0','#045a8d','#023858'),
+                                              values = scales::rescale(quantile(as.vector(pltDat$value),
+                                                                                c(0,.6,.75,.85,.9,.95,.99,.995,1),
                                                                                 na.rm = TRUE)),
                                               breaks = function(lims){
-                                                dat <- quantile(as.vector(reference$surface.matrix),
-                                                                c(0,.01,.5,.99,1),
-                                                                # c(0,.01,.025,.1,.25,.5,.75,0.9,.975,.99,1),
-                                                                na.rm = TRUE)
-
-                                                dat <- dat %>%
-                                                  setNames(paste0(names(dat)," [",round(dat*1e6,1),"]"))
-
-                                                return(dat)
-                                              },
-                                              na.value = "transparent",
-                                              guide = ggplot2::guide_colorbar(title = "reference",
-                                                                              barheight = 10,
-                                                                              order = 1,
-                                                                              label.theme = ggplot2::element_text(size = 8),
-                                                                              title.theme = ggplot2::element_text(size = 10),)) +
-                ggnewscale::new_scale_fill() +
-                geom_raster(data =
-                              dplyr::bind_rows(targetRotated %>%
-                                                 x3pToDF() %>%
-                                                 dplyr::mutate(x3pName = "target") %>%
-                                                 filter(!is.na(value))),
-                            ggplot2::aes(x = x,y = y,fill = value),
-                            alpha = input$targetAlpha) +
-                ggplot2::scale_fill_gradientn(colours = c("#00876c","#4c9c85","#78b19f","#a0c6b9","#c8dbd5","#f1f1f1",
-                                                          "#f1cfce","#eeadad","#e88b8d","#df676e","#d43d51"),
-                                              values = scales::rescale(quantile(as.vector(targetRotated$surface.matrix),
-                                                                                c(0,.01,.025,.1,.25,.5,.75,0.9,.975,.99,1),
-                                                                                na.rm = TRUE)),
-                                              breaks = function(lims){
-                                                dat <- quantile(as.vector(targetRotated$surface.matrix),
-                                                                c(0,.01,.5,.99,1),
-                                                                # c(0,.01,.025,.1,.25,.5,.75,0.9,.975,.99,1),
-                                                                na.rm = TRUE)
-
-                                                dat <- dat %>%
-                                                  setNames(paste0(names(dat)," [",round(dat*1e6,1),"]"))
-
-                                                return(dat)
-                                              },
-                                              na.value = "transparent",
-                                              guide = guide_colorbar(title = "target",
-                                                                     barheight = 10,
-                                                                     order = 2,
-                                                                     label.theme = ggplot2::element_text(size = 8),
-                                                                     title.theme = ggplot2::element_text(size = 10),)) +
-                ggplot2::coord_fixed(expand = FALSE) +
-                ggplot2::theme_minimal() +
-                ggplot2::scale_y_reverse() +
-                ggplot2::theme(axis.ticks.x = ggplot2::element_blank(),
-                               axis.ticks.y = ggplot2::element_blank(),
-                               panel.grid.major = ggplot2::element_blank(),
-                               panel.grid.minor = ggplot2::element_blank(),
-                               panel.background = ggplot2::element_blank())
-
-            }
-            else{
-
-              # updateNumericInput(inputId = "referenceAlpha",value = input$targetAlpha)
-              # updateNumericInput(inputId = "targetAlpha",value = input$targetAlpha)
-
-              plt <- ggplot2::ggplot() +
-                geom_raster(data =
-                              dplyr::bind_rows(targetRotated %>%
-                                                 x3pToDF() %>%
-                                                 dplyr::mutate(x3pName = "target") %>%
-                                                 filter(!is.na(value))),
-                            ggplot2::aes(x = x,y = y,fill = value),
-                            alpha = input$targetAlpha) +
-                ggplot2::scale_fill_gradientn(colours = c("#00876c","#4c9c85","#78b19f","#a0c6b9","#c8dbd5","#f1f1f1",
-                                                          "#f1cfce","#eeadad","#e88b8d","#df676e","#d43d51"),
-                                              values = scales::rescale(quantile(as.vector(targetRotated$surface.matrix),
-                                                                                c(0,.01,.025,.1,.25,.5,.75,0.9,.975,.99,1),
-                                                                                na.rm = TRUE)),
-                                              breaks = function(lims){
-                                                dat <- quantile(as.vector(targetRotated$surface.matrix),
-                                                                c(0,.01,.5,.99,1),
+                                                dat <- quantile(as.vector(pltDat$value),
+                                                                c(0,.5,.99,1),
+                                                                # c(0,.01,.5,.99,1),
                                                                 # c(0,.01,.025,.1,.25,.5,.75,0.9,.975,.99,1),
                                                                 na.rm = TRUE)
 
@@ -1105,20 +1054,17 @@ estimatedRotationApp <- function(reference,
                                                                      label.theme = ggplot2::element_text(size = 8),
                                                                      title.theme = ggplot2::element_text(size = 10))) +
                 ggnewscale::new_scale_fill() +
-                ggplot2::geom_raster(data = reference %>%
-                                       x3pToDF() %>%
-                                       dplyr::mutate(x3pName = "reference") %>%
-                                       filter(!is.na(value)),
+                ggplot2::geom_raster(data = pltDat1,
                                      ggplot2::aes(x = x,y = y,fill = value),
-                                     alpha = input$referenceAlpha) +
-                ggplot2::scale_fill_gradientn(colours = rev(c('#7f3b08','#b35806','#e08214','#fdb863','#fee0b6','#f7f7f7',
-                                                              '#d8daeb','#b2abd2','#8073ac','#542788','#2d004b')),
-                                              values = scales::rescale(quantile(as.vector(reference$surface.matrix),
-                                                                                c(0,.01,.025,.1,.25,.5,.75,0.9,.975,.99,1),
+                                     alpha = input$targetAlpha) +
+                ggplot2::scale_fill_gradientn(colours = c('#fff5f0','#fee0d2','#fcbba1','#fc9272','#fb6a4a','#ef3b2c','#cb181d','#a50f15','#67000d'),
+                                              values = scales::rescale(quantile(as.vector(pltDat1$value),
+                                                                                c(0,.6,.75,.85,.9,.95,.99,.995,1),
                                                                                 na.rm = TRUE)),
                                               breaks = function(lims){
-                                                dat <- quantile(as.vector(reference$surface.matrix),
-                                                                c(0,.01,.5,.99,1),
+                                                dat <- quantile(as.vector(pltDat1$value),
+                                                                c(0,.5,.99,1),
+                                                                # c(0,.01,.5,.99,1),
                                                                 # c(0,.01,.025,.1,.25,.5,.75,0.9,.975,.99,1),
                                                                 na.rm = TRUE)
 
@@ -1133,7 +1079,87 @@ estimatedRotationApp <- function(reference,
                                                                               order = 1,
                                                                               label.theme = ggplot2::element_text(size = 8),
                                                                               title.theme = ggplot2::element_text(size = 10),)) +
-                ggplot2::coord_fixed(expand = FALSE) +
+                coord_fixed(expand = FALSE) +
+                ggplot2::theme_minimal() +
+                ggplot2::scale_y_reverse() +
+                ggplot2::theme(axis.ticks.x = ggplot2::element_blank(),
+                               axis.ticks.y = ggplot2::element_blank(),
+                               panel.grid.major = ggplot2::element_blank(),
+                               panel.grid.minor = ggplot2::element_blank(),
+                               panel.background = ggplot2::element_blank())
+
+            }
+            else{
+
+              # updateNumericInput(inputId = "referenceAlpha",value = input$targetAlpha)
+              # updateNumericInput(inputId = "targetAlpha",value = input$targetAlpha)
+
+
+              pltDat <- targetRotated %>%
+                x3pToDF() %>%
+                dplyr::mutate(x3pName = "target") %>%
+                filter(!is.na(value)) %>%
+                mutate(value = abs(value - median(value)))
+
+              pltDat1 <- reference %>%
+                x3pToDF() %>%
+                dplyr::mutate(x3pName = "reference") %>%
+                filter(!is.na(value)) %>%
+                mutate(value = abs(value - median(value)))
+
+              plt <- ggplot() +
+                geom_raster(data = pltDat,
+                            aes(x=x,y=y,fill = value),
+                            alpha = input$targetAlpha) +
+                ggplot2::scale_fill_gradientn(colours = c('#fff7fb','#ece7f2','#d0d1e6','#a6bddb','#74a9cf','#3690c0','#0570b0','#045a8d','#023858'),
+                                              values = scales::rescale(quantile(as.vector(pltDat$value),
+                                                                                c(0,.6,.75,.85,.9,.95,.99,.995,1),
+                                                                                na.rm = TRUE)),
+                                              breaks = function(lims){
+                                                dat <- quantile(as.vector(pltDat$value),
+                                                                c(0,.5,.99,1),
+                                                                # c(0,.01,.5,.99,1),
+                                                                # c(0,.01,.025,.1,.25,.5,.75,0.9,.975,.99,1),
+                                                                na.rm = TRUE)
+
+                                                dat <- dat %>%
+                                                  setNames(paste0(names(dat)," [",round(dat*1e6,1),"]"))
+
+                                                return(dat)
+                                              },
+                                              na.value = "transparent",
+                                              guide = guide_colorbar(title = "target",
+                                                                     barheight = 10,
+                                                                     order = 2,
+                                                                     label.theme = ggplot2::element_text(size = 8),
+                                                                     title.theme = ggplot2::element_text(size = 10))) +
+                ggnewscale::new_scale_fill() +
+                ggplot2::geom_raster(data = pltDat1,
+                                     ggplot2::aes(x = x,y = y,fill = value),
+                                     alpha = input$referenceAlpha) +
+                ggplot2::scale_fill_gradientn(colours = c('#fff5f0','#fee0d2','#fcbba1','#fc9272','#fb6a4a','#ef3b2c','#cb181d','#a50f15','#67000d'),
+                                              values = scales::rescale(quantile(as.vector(pltDat1$value),
+                                                                                c(0,.6,.75,.85,.9,.95,.99,.995,1),
+                                                                                na.rm = TRUE)),
+                                              breaks = function(lims){
+                                                dat <- quantile(as.vector(pltDat1$value),
+                                                                c(0,.5,.99,1),
+                                                                # c(0,.01,.5,.99,1),
+                                                                # c(0,.01,.025,.1,.25,.5,.75,0.9,.975,.99,1),
+                                                                na.rm = TRUE)
+
+                                                dat <- dat %>%
+                                                  setNames(paste0(names(dat)," [",round(dat*1e6,1),"]"))
+
+                                                return(dat)
+                                              },
+                                              na.value = "transparent",
+                                              guide = ggplot2::guide_colorbar(title = "reference",
+                                                                              barheight = 10,
+                                                                              order = 1,
+                                                                              label.theme = ggplot2::element_text(size = 8),
+                                                                              title.theme = ggplot2::element_text(size = 10),)) +
+                coord_fixed(expand = FALSE) +
                 ggplot2::theme_minimal() +
                 ggplot2::scale_y_reverse() +
                 ggplot2::theme(axis.ticks.x = ggplot2::element_blank(),
@@ -1192,54 +1218,59 @@ estimatedRotationApp <- function(reference,
           plt
 
         })
-
-
-        output$differencePlot <- renderPlot({
-          # browser()
-
-          pltDat <- difference %>%
-            filter(!is.na(Overlap.Difference)) %>%
-            mutate(x3pName = "Overlap Reference minus Target")
-
-          plt <- pltDat %>%
-            ggplot2::ggplot() +
-            ggplot2::geom_raster(ggplot2::aes(x = x,y = y,fill = Overlap.Difference)) +
-            ggplot2::scale_fill_gradientn(colours = c("#67a9cf","#86b7d6","#a2c5dd","#bdd3e3","#d7e2ea",
-                                                          "#f1f1f1","#f5dcd3","#f6c8b6","#f6b399","#f39f7d","#ef8a62"),
-                                          values = scales::rescale(quantile(pltDat$Overlap.Difference,
-                                                                            c(0,.01,.025,.1,.25,.5,.75,0.9,.975,.99,1),
-                                                                            na.rm = TRUE)),
-                                          breaks = function(lims){
-                                            dat <- quantile(as.vector(pltDat$Overlap.Difference),
-                                                            c(0,.01,.5,.99,1),
-                                                            # c(0,.01,.025,.1,.25,.5,.75,0.9,.975,.99,1),
-                                                            na.rm = TRUE)
-
-                                            dat <- dat %>%
-                                              setNames(paste0(names(dat)," [",round(dat*1e6,1),"]"))
-
-                                            return(dat)
-                                          },
-                                          na.value = "transparent",
-                                          guide = ggplot2::guide_colorbar(title = expression("Rel. Height ["*mu*"m]"),
-                                                                          barheight = 10,
-                                                                          order = 1,
-                                                                          label.theme = ggplot2::element_text(size = 8),
-                                                                          title.theme = ggplot2::element_text(size = 10))) +
-            facet_wrap(~ x3pName,nrow = 1) +
-            ggplot2::coord_fixed(expand = FALSE) +
-            ggplot2::theme_minimal() +
-            ggplot2::scale_y_reverse() +
-            ggplot2::theme(axis.ticks.x = ggplot2::element_blank(),
-                           axis.ticks.y = ggplot2::element_blank(),
-                           panel.grid.major = ggplot2::element_blank(),
-                           panel.grid.minor = ggplot2::element_blank(),
-                           panel.background = ggplot2::element_blank())
-
-          plt
-
-        })
       })
+
+      observeEvent({input$rotationEstimation},
+                   {
+
+                     output$differencePlot <- renderPlot({
+
+                       pltDat <- difference %>%
+                         filter(!is.na(Overlap.Difference)) %>%
+                         mutate(x3pName = "Overlap Reference minus Target")
+
+                       plt <- pltDat %>%
+                         ggplot2::ggplot() +
+                         ggplot2::geom_raster(ggplot2::aes(x = x,y = y,fill = Overlap.Difference)) +
+                         ggplot2::scale_fill_gradientn(colours = rev(c('#7f3b08','#b35806','#e08214','#fdb863','#fee0b6','#f7f7f7',
+                                                                       '#d8daeb','#b2abd2','#8073ac','#542788','#2d004b')),
+                                                         #c("#67a9cf","#86b7d6","#a2c5dd","#bdd3e3","#d7e2ea",
+                                                                  # "#f1f1f1","#f5dcd3","#f6c8b6","#f6b399","#f39f7d","#ef8a62"),
+                                                       values = scales::rescale(quantile(pltDat$Overlap.Difference,
+                                                                                         c(0,.01,.025,.1,.25,.5,.75,0.9,.975,.99,1),
+                                                                                         na.rm = TRUE)),
+                                                       breaks = function(lims){
+                                                         dat <- quantile(as.vector(pltDat$Overlap.Difference),
+                                                                         c(0,.01,.5,.99,1),
+                                                                         # c(0,.01,.025,.1,.25,.5,.75,0.9,.975,.99,1),
+                                                                         na.rm = TRUE)
+
+                                                         dat <- dat %>%
+                                                           setNames(paste0(names(dat)," [",round(dat*1e6,1),"]"))
+
+                                                         return(dat)
+                                                       },
+                                                       na.value = "transparent",
+                                                       guide = ggplot2::guide_colorbar(title = expression("Rel. Height ["*mu*"m]"),
+                                                                                       barheight = 10,
+                                                                                       order = 1,
+                                                                                       label.theme = ggplot2::element_text(size = 8),
+                                                                                       title.theme = ggplot2::element_text(size = 10))) +
+                         facet_wrap(~ x3pName,nrow = 1) +
+                         ggplot2::coord_fixed(expand = FALSE) +
+                         ggplot2::theme_minimal() +
+                         ggplot2::scale_y_reverse() +
+                         ggplot2::theme(axis.ticks.x = ggplot2::element_blank(),
+                                        axis.ticks.y = ggplot2::element_blank(),
+                                        panel.grid.major = ggplot2::element_blank(),
+                                        panel.grid.minor = ggplot2::element_blank(),
+                                        panel.background = ggplot2::element_blank())
+
+                       plt
+
+                     })
+
+                   })
 
       observe({
 
@@ -1257,5 +1288,176 @@ estimatedRotationApp <- function(reference,
   )
 
   shiny::runApp(app)
+
+}
+
+scanPhaseShift <- function(x3p,rotation,rowTranslation,colTranslation){
+
+  mat <- x3p$surface.matrix
+
+  if(rotation != 0){
+
+    mat <- cmcR:::rotateSurfaceMatrix(surfaceMat = mat,
+                                      theta = rotation)
+
+  }
+
+  if(rowTranslation != 0){
+
+    rowPad <- matrix(NA,nrow = abs(rowTranslation),
+                     ncol = ncol(mat))
+
+    if(rowTranslation < 0){
+
+      mat <- rbind(mat,rowPad)
+
+    }
+    else if(rowTranslation > 0){
+
+      mat <- rbind(rowPad,mat)
+
+    }
+
+  }
+
+  if(colTranslation != 0){
+
+    colPad <- matrix(NA,ncol = abs(colTranslation),
+                     nrow = nrow(mat))
+
+    if(colTranslation < 0){
+
+      mat <- cbind(mat,colPad)
+
+    }
+    else if(colTranslation > 0){
+
+      mat <- cbind(colPad,mat)
+
+    }
+
+  }
+
+  x3p$surface.matrix <- mat
+  x3p$header.info$sizeX <- nrow(mat)
+  x3p$header.info$sizeY <- ncol(mat)
+
+  return(x3p)
+}
+
+calcRegistration <- function(comparisonData,xThresh = 20,yThresh = xThresh,
+                             corrThresh = .5,thetaThresh = 6,tau = 1,plot = TRUE){
+
+  if(plot){
+
+    plt1 <- diagnosticHistograms(comparisonData %>%
+                                   filter(direction == "refToTarget")) +
+      plot_annotation(title = "Reference vs. Target Similarity Features")
+
+    plt2 <- diagnosticHistograms(comparisonData %>%
+                                   filter(direction == "targetToRef")) +
+      plot_annotation(title = "Target vs. Reference Similarity Features")
+
+  }
+
+  ret1 <- comparisonData %>%
+    group_by(cellIndex,direction) %>%
+    filter(pairwiseCompCor == max(pairwiseCompCor) & pairwiseCompCor >= corrThresh) %>%
+    ungroup() %>%
+    group_by(direction) %>%
+    summarise(theta = median(theta),
+              x = median(x),
+              y = median(y)) %>%
+    ungroup() %>%
+    mutate(method = "original") %>%
+    select(method,direction,theta,x,y)
+
+  ret2 <- comparisonData %>%
+    group_by(direction) %>%
+    group_split() %>%
+    map_dfr(~ {
+
+      mutate(.,cmcThetaDistribClassif = cmcR::decision_highCMC_cmcThetaDistrib(cellIndex=cellIndex,x=x,y=y,theta=theta,
+                                                                               corr=pairwiseCompCor,
+                                                                               xThresh=xThresh,yThresh = yThresh,corrThresh = corrThresh)) %>%
+        cmcR::decision_highCMC_identifyHighCMCThetas(tau = tau)
+
+    }) %>%
+    group_by(theta,direction)  %>%
+    filter(thetaCMCIdentif == "High") %>%
+    mutate(thetaRange = max(theta) - min(theta)) %>%
+    group_by(direction) %>%
+    summarise(theta = median(theta),
+              x = median(x),
+              y = median(y),
+              thetaRange = unique(thetaRange)) %>%
+    mutate(theta = ifelse(thetaRange <= thetaThresh,
+                          theta,NA),
+           x = ifelse(thetaRange <= thetaThresh,
+                      x,NA),
+           y = ifelse(thetaRange <= thetaThresh,
+                      y,NA)) %>%
+    select(-thetaRange) %>%
+    ungroup() %>%
+    mutate(method = "highCMC") %>%
+    select(method,direction,theta,x,y)
+
+  if(plot){
+
+    return(list("Reference vs. Target Features" = plt1,
+                "Target vs. Reference Features" = plt2,
+                "Estimated Alignment" = bind_rows(ret1,ret2)))
+
+  }
+  else{
+    return(bind_rows(ret1,ret2))
+  }
+}
+
+preProcess_anisotropicFilter <- function(x3p,
+                                         amplitude,
+                                         highPass = TRUE, #subtracts-off anisotropically filtered matrix
+                                         sharpness = 0.7,
+                                         anisotropy = 0.6,
+                                         alpha = 0.6,
+                                         sigma = 1.1,
+                                         dl = 0.8,
+                                         da = 30,
+                                         gauss_prec = 2,
+                                         interpolation_type = 0L,
+                                         fast_approx = TRUE){
+
+  mat <- x3p$surface.matrix
+
+  mat[is.na(mat)] <- 0
+
+  mat <- mat %>%
+    imager::as.cimg() %>%
+    imager::blur_anisotropic(amplitude = amplitude,
+                             sharpness = sharpness,
+                             anisotropy = anisotropy,
+                             alpha = alpha,
+                             sigma = sigma,
+                             dl = dl,
+                             da = da,
+                             gauss_prec = gauss_prec,
+                             interpolation_type = interpolation_type,
+                             fast_approx = fast_approx) %>%
+    as.matrix()
+
+  mat[is.na(x3p$surface.matrix)] <- NA
+
+  if(highPass){
+
+    x3p$surface.matrix <- x3p$surface.matrix - mat
+
+  }
+  else{
+
+    x3p$surface.matrix <- mat
+
+  }
+
+  return(x3p)
 
 }
